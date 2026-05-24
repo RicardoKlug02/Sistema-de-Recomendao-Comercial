@@ -8,13 +8,22 @@ O sistema integra análise de dados, inteligência artificial e visualização d
 ---
 
 ## 🛠 Tecnologias e Ferramentas
-* **Linguagens:** Python
-* **Frameworks:** ..
-* **Banco de Dados:** ..
-* **Inteligência Artificial:** ..
-* **Gestão:** Git, GitHub Projects 
+* **Linguagens:** Python.
+* **Frameworks:** FastAPI.
+* **Banco de Dados:** PostgreSQL.
+* **ORM:** SQLAlchemy.
+* **Gestão:** Git, GitHub Projects.
+* **Processamento:** Pandas e Scikit-learn.
+* **UI/UX:** .
+* **Comunicação:** REST API.
+* **Ambiente:** VS Code.
+* **Autentificação:** JWT (JSON Web Tokens).
 
 ---
+
+## 👥 Colaboradores
+* **Ricardo Nilson Klug**
+* **Rafael Júlio Klug**
 
 ## 📊 Funcionalidades
 - **Dashboard Gerencial:** Visualização centralizada de vendas, metas e indicadores de performance.
