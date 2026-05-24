@@ -55,7 +55,7 @@ O sistema integra análise de dados, inteligência artificial e visualização d
 │       │   └── services/   # Lógica da IA/Recomendação
 │       ├── main.py         # Ponto de entrada
 │       └── requirements.txt # Bibliotecas do projeto
-├── .env                    # Variáveis sensíveis (NÃO ENVIAR AO GIT)
+├── .env                    # Variáveis sensíveis
 ├── .env.example            # Modelo de variáveis de ambiente
 ├── .gitignore              # Lista de arquivos ignorados
 └── README.md               # Documentação principal e tecnologias
