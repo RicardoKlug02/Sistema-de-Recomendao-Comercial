@@ -1,15 +1,21 @@
-from app.core.database import SessionLocal, Base
+# src/backend/app/core/database.py
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
 
-# Carrega as variáveis do arquivo .env
+# Carrega as variáveis do seu arquivo .env
 load_dotenv()
 
-# Agora você acessa os valores de forma segura
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_NAME = os.getenv("DB_NAME")
+# Pega a URL do banco do seu .env
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Monta a URL de conexão
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:5432/{DB_NAME}"
+# Cria a engine do SQLAlchemy
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+# Cria a fábrica de sessões (usada para fazer consultas no banco)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# A famosa Base que todos os seus modelos irão herdar
+Base = declarative_base()
