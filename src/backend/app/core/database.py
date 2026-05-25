@@ -11,11 +11,8 @@ load_dotenv()
 # Pega a URL do banco do seu .env
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Cria a engine do SQLAlchemy
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
-# Cria a fábrica de sessões (usada para fazer consultas no banco)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# A famosa Base que todos os seus modelos irão herdar
 Base = declarative_base()
