@@ -7,8 +7,12 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from src.backend.app.core.database import engine, Base
 from src.backend.app.models.cliente import Cliente
+from src.backend.app.models.fabrica import Fabrica
+from src.backend.app.models.item_venda import ItemVenda
+from src.backend.app.models.produto import Produto
+from src.backend.app.models.venda import Venda
 from src.backend.app.models.vendedor import Vendedor
-# ... resto dos seus modelos
+
 
 def init_db():
     print("Iniciando a criação das tabelas no banco de dados...")
