@@ -25,6 +25,8 @@ O sistema integra análise de dados, inteligência artificial e visualização d
 * **Ricardo Nilson Klug**
 * **Rafael Júlio Klug**
 
+---
+
 ## 📊 Funcionalidades
 - **Dashboard Gerencial:** Visualização centralizada de vendas, metas e indicadores de performance.
 - **Motor de Recomendação:** Algoritmo de filtragem para sugestão inteligente de produtos (*Cross-selling*).
