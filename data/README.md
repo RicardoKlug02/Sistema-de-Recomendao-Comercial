@@ -24,4 +24,4 @@ Para garantir a qualidade dos dados utilizados pelo algoritmo de Inteligência A
 * Qualquer dado exposto aqui é sintético ou anonimizado para fins de demonstração acadêmica.
 
 ---
-*Documentação criada para o Projeto de TCC - Sistemas de Informação (Ricardo Nilson Klug).*
+*Documentação criada para o Projeto de TCC - Sistemas de Informação (Ricardo Nilson Klug e Rafael Julio Klug).*
