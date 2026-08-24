@@ -37,27 +37,27 @@ O sistema integra análise de dados, inteligência artificial e visualização d
 ```text
 /
 ├── .github/                # Configurações do GitHub (Issues, Projects)
-├── .vscode/                # Configurações do editor (ignorada pelo Git)
+├── .vscode/                # Configurações do editor
 ├── data/                   # Gestão de dados do sistema
 │   ├── raw/                # Dados brutos (.csv, .xlsx)
 │   ├── processed/          # Dados tratados pela IA
 │   ├── scripts/            # Scripts de limpeza (Python)
 │   └── README.md           # Documentação da camada de dados
 ├── docs/                   # Documentação técnica e UML
-├── frontend/               # Pasta dedicada ao seu irmão (UI/UX)
+├── frontend/               # Pasta dedicada a UI/UX
 ├── src/                    # Código fonte do sistema
 │   └── backend/            # Lógica do motor de IA e API
 │       ├── app/            # Código da aplicação
-│       │   ├── api/        # Endpoints (rotas para o front)
+│       │   ├── api/        # Endpoints
 │       │   ├── core/       # database.py, config.py, segurança
 │       │   ├── models/     # Classes do banco (SQLAlchemy)
 │       │   ├── schemas/    # Validação (Pydantic)
 │       │   └── services/   # Lógica da IA/Recomendação
-│       ├── main.py         # Ponto de entrada
+│       ├── main.py         # Main
 │       └── requirements.txt # Bibliotecas do projeto
 ├── .env                    # Variáveis sensíveis
 ├── .env.example            # Modelo de variáveis de ambiente
-├── .gitignore              # Lista de arquivos ignorados
+├── .gitignore              
 └── README.md               # Documentação principal e tecnologias
 
 
