@@ -9,7 +9,7 @@ class Cliente(Base):
     nome_fantasia = Column(String(150))
     cnpj_cpf = Column(String(18), unique=True)
     cep = Column(String(10))           
-    grupo_economico = Column(String(100)) # Mapeado de "Rede de clientes"
+    grupo_economico = Column(String(100)) #Mapeado de "Rede de clientes"
     micro_regiao = Column(String(50))
     cidade = Column(String(100))
     estado = Column(String(2))
