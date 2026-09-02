@@ -44,7 +44,7 @@ O sistema integra análise de dados, inteligência artificial e visualização d
 │   ├── scripts/            # Scripts de limpeza (Python)
 │   └── README.md           # Documentação da camada de dados
 ├── docs/                   # Documentação técnica e UML
-├── frontend/               # Pasta dedicada ao seu irmão (UI/UX)
+├── frontend/               # Pasta dedicada ao (UI/UX)
 ├── src/                    # Código fonte do sistema
 │   └── backend/            # Lógica do motor de IA e API
 │       ├── app/            # Código da aplicação
