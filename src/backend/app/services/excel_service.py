@@ -3,6 +3,7 @@ import hashlib
 import re
 from datetime import datetime
 from sqlalchemy.orm import Session
+from src.backend.app.models import Venda
 
 class ExcelService:
     def __init__(self, db_session: Session):

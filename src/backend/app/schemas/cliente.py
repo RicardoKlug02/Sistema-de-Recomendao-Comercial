@@ -1,16 +1,15 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
-# Esse schema é usado quando você vai criar um cliente novo
+# Usado para entrada de dados (POST /clientes)
 class ClienteCreate(BaseModel):
     nome: str
     segmento: str
     cidade: str
     estado: str
 
-# Esse schema é usado quando você vai devolver o cliente para o Front (leitura)
+# Usado para envio ao frontend (GET /clientes/{id})
 class ClienteResponse(ClienteCreate):
     id: int
 
-    class Config:
-        from_attributes = True # Permite ler objetos do SQLAlchemy
+    model_config = ConfigDict(from_attributes=True)
