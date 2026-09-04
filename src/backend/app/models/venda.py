@@ -1,10 +1,11 @@
-from sqlalchemy import Column, Integer, Float, ForeignKey, Date
+from sqlalchemy import Column, Integer, Float, ForeignKey, Date, String
 from sqlalchemy.orm import relationship
 from src.backend.app.core.database import Base 
 
 class Venda(Base):
     __tablename__ = 'vendas'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    numero_pedido = Column(String(50), unique=True, index=True)
     cliente_id = Column(Integer, ForeignKey('clientes.id'))
     vendedor_id = Column(Integer, ForeignKey('vendedores.id'))
     fabrica_id = Column(Integer, ForeignKey('fabricas.id'))
