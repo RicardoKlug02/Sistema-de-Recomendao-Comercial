@@ -1,16 +1,32 @@
-# React + Vite
+# Frontend — Sistema de Recomendação Comercial
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+SPA em React com Vite, baseada em `docs/Tela de login.png`, sem o contorno azul de seleção do desenho.
 
-Currently, two official plugins are available:
+## Executar
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Na pasta `frontend`, instale as dependências com `npm install` e execute `npm run dev`.
+Use `npm run build` para gerar a versão de produção e `npm run lint` para verificar o código.
 
-## React Compiler
+## Demonstração
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Digite qualquer e-mail válido e uma senha não vazia para simular o acesso.
+- Campos obrigatórios, formato do e-mail, carregamento e falhas têm feedback na interface.
+- Após entrar, uma confirmação permite sair e voltar ao login sem recarregar a página.
+- “Esqueceu a senha?” abre a recuperação. A solicitação é simulada e nenhum e-mail é enviado.
+- A sessão existe apenas em memória; recarregar retorna ao login. Senhas e tokens não são persistidos.
 
-## Expanding the ESLint configuration
+## Componentes e integração
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `src/components/AuthCard.jsx`: estrutura visual compartilhada.
+- `src/components/FormField.jsx`: campo com label e erro acessível.
+- `src/components/AuthForm.jsx`: formulário de login e recuperação, validação e carregamento.
+- `src/services/auth.js`: placeholders assíncronos de login e recuperação.
+
+Quando o contrato do backend estiver disponível, substitua `login({ email, password })` e `requestPasswordReset({ email })` pelas chamadas reais. O login deve retornar `{ user: { email } }`; falhas devem rejeitar a promessa. Autenticação e autorização reais deverão ser implementadas no servidor antes de conectar dados protegidos.
+
+## Verificação manual
+
+1. Enviar campos vazios e e-mail inválido; verificar mensagens e foco no primeiro campo inválido.
+2. Usar e-mail válido e senha; verificar carregamento, confirmação e saída.
+3. Abrir recuperação, testar e-mail inválido e concluir uma solicitação simulada; voltar ao login.
+4. Navegar com Tab e Enter; verificar foco visível e ausência de rolagem horizontal no celular.
