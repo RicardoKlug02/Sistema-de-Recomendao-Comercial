@@ -1,9 +1,8 @@
-# init_db.py (na raiz)
 import sys
 import os
 
 # Adiciona a pasta raiz ao sys.path para o Python encontrar o pacote 'src'
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"..")))
 
 from src.backend.app.core.database import engine, Base
 from src.backend.app.models.cliente import Cliente
