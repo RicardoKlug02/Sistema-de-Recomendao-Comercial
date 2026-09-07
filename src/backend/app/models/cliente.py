@@ -5,8 +5,8 @@ from src.backend.app.core.database import Base
 class Cliente(Base):
     __tablename__ = 'clientes'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    razao_social = Column(String(150), nullable=False)
-    nome_fantasia = Column(String(150))
+    razao_social = Column(String(255), nullable=False)
+    nome_fantasia = Column(String(255))
     cnpj_cpf = Column(String(64), unique=True)
     cep = Column(String(10))           
     grupo_economico = Column(String(100)) #Mapeado de "Rede de clientes"

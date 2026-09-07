@@ -3,6 +3,7 @@ import hashlib
 import re
 import pandas as pd
 from sqlalchemy.orm import Session
+from src.backend.app.core.security import encrypt_data
 
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.fabrica import Fabrica
@@ -57,27 +58,80 @@ class ExcelService:
 
     def _limpar_excel_cabecalho(self, caminho_arquivo: str) -> pd.DataFrame:
         df = pd.read_excel(caminho_arquivo, skiprows=10, dtype=str)
+
+        # 1. Normaliza cabeçalhos e remove colunas totalmente vazias
+        df = df.dropna(how="all", axis=1)
         df.columns = [
             str(c).strip().lower().replace(" ", "_") for c in df.columns
         ]
 
-        col_map = {}
-        for col in df.columns:
-            if "data" in col:
-                col_map["data"] = col
-            elif "pedido" in col:
-                col_map["pedido"] = col
-            elif "cnpj" in col or "cpf" in col:
-                col_map["cnpj_cpf"] = col
-            elif "vendedor" in col:
-                col_map["vendedor"] = col
-            elif "total" in col:
-                col_map["valor_total"] = col
+        # 2. Mapeamento estrito para evitar criar duas colunas com o mesmo nome
+        novo_map = {}
+        ja_mapeados = set()
 
-        df = df.rename(columns={v: k for k, v in col_map.items()})
+        for col in df.columns:
+            if "pedido" in col and "pedido" not in ja_mapeados:
+                novo_map[col] = "pedido"
+                ja_mapeados.add("pedido")
+            elif (
+                "cnpj" in col or "cpf" in col
+            ) and "cnpj_cpf" not in ja_mapeados:
+                novo_map[col] = "cnpj_cpf"
+                ja_mapeados.add("cnpj_cpf")
+            elif "vendedor" in col and "vendedor" not in ja_mapeados:
+                novo_map[col] = "vendedor"
+                ja_mapeados.add("vendedor")
+            elif (
+                "total" in col
+                and "valor_total" not in ja_mapeados
+                and "produtos" in col
+            ):
+                novo_map[col] = "valor_total"
+                ja_mapeados.add("valor_total")
+            elif (
+                "total" in col
+                and "valor_total" not in ja_mapeados
+            ):  # fallback se não tiver 'produtos'
+                novo_map[col] = "valor_total"
+                ja_mapeados.add("valor_total")
+            elif "data" in col and "data" not in ja_mapeados:
+                novo_map[col] = "data"
+                ja_mapeados.add("data")
+            elif any(termo in col for termo in ["cliente", "razao", "nome"]) and "cliente" not in ja_mapeados:
+                novo_map[col] = "cliente"
+                ja_mapeados.add("cliente")
+
+        df = df.rename(columns=novo_map)
+
+        # 3. Elimina duplicatas de colunas que possam ter sobrado
+        df = df.loc[:, ~df.columns.duplicated()]
+
+        # 4. Garante que 'pedido' exista
+        if "pedido" not in df.columns:
+            raise ValueError(
+                f"Coluna de pedido não identificada em {caminho_arquivo}"
+            )
+
         df = df.dropna(subset=["pedido"])
-        df["pedido"] = df["pedido"].astype(str).str.strip()
-        df["valor_total"] = df["valor_total"].apply(self._converter_valor_br)
+
+        # 5. Converte para string garantindo que seja uma Series
+        coluna_pedido = df["pedido"]
+        if isinstance(coluna_pedido, pd.DataFrame):
+            coluna_pedido = coluna_pedido.iloc[:, 0]
+
+        df["pedido"] = coluna_pedido.astype(str).str.strip()
+
+        # Remove linhas com pedido vazio ou cabeçalhos residuais
+        df = df[df["pedido"] != ""]
+        df = df[df["pedido"] != "nan"]
+
+        if "valor_total" in df.columns:
+            df["valor_total"] = df["valor_total"].apply(
+                self._converter_valor_br
+            )
+        else:
+            df["valor_total"] = 0.0
+
         return df
 
     def _limpar_excel_produtos(self, caminho_arquivo: str) -> pd.DataFrame:
@@ -144,7 +198,7 @@ class ExcelService:
             self.db.add(fabrica)
             self.db.flush()
 
-        # 2. Cache e Sincronização de Clientes (com Anonimização LGPD)
+        # 2. Cache e Sincronização de Clientes (com Anonimização LGPD + Criptografia Reversível)
         clientes_cache = {
             c.cnpj_cpf: c.id
             for c in self.db.query(Cliente.cnpj_cpf, Cliente.id).all()
@@ -155,11 +209,17 @@ class ExcelService:
                 continue
 
             doc_anon = f"CLI_{self._anonimizar(doc_real)}"
+            
+            # Pega o nome real da planilha (se existir) para encriptar
+            nome_real = str(row.get("cliente", "")).strip()
+            if not nome_real or nome_real == "nan":
+                nome_real = f"Cliente {doc_anon[:10]}"
+
             if doc_anon not in clientes_cache:
                 cliente = Cliente(
-                    razao_social=f"Cliente {doc_anon[:10]}",
-                    nome_fantasia=f"Fantasia {doc_anon[:10]}",
-                    cnpj_cpf=doc_anon,
+                    cnpj_cpf=doc_anon,                          # Hash determinístico (para o motor de ML)
+                    razao_social=encrypt_data(nome_real),        # Criptografado no banco (para exibir ao vendedor autenticado)
+                    nome_fantasia=encrypt_data(nome_real),       # Criptografado no banco
                 )
                 self.db.add(cliente)
                 self.db.flush()

@@ -5,21 +5,20 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-# 1. Garante que o Python encontre a pasta src
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# 2. Importa a Base, a engine e todos os models (necessário para o autogenerate enxergá-los)
+# 2. Imporamos a Base, engine e modelos para gerenciar
 from src.backend.app.core.database import Base, engine
-import src.backend.app.models  # Garante que todos os models sejam carregados
+import src.backend.app.models  #Garante que todos os models sejam carregados
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 3. Informa os metadados das tabelas ao Alembic
+# 3. Informa os metadados das tabelas ao Alembic3
 target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
