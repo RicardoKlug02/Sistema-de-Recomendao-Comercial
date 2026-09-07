@@ -1,0 +1,81 @@
+.pagina-autenticacao {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+.cartao-autenticacao {
+  width: 320px;
+  max-width: 100%;
+  padding: 36px;
+  background: #fff;
+  border-radius: 6px;
+}
+.cabecalho-autenticacao { text-align: center; margin-bottom: 24px; }
+.cabecalho-autenticacao h1 {
+  margin: 0 0 8px;
+  font-size: 38px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -1.4px;
+}
+.cabecalho-autenticacao h1:focus { outline: none; }
+.cabecalho-autenticacao p { margin: 0; font-size: 13px; line-height: 1.5; color: #767676; }
+.formulario-autenticacao {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border: 1px solid #dedede;
+  border-radius: 6px;
+  padding: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.campo-formulario { display: flex; flex-direction: column; gap: 5px; }
+.campo-formulario label { line-height: 17px; }
+.campo-formulario input {
+  width: 100%;
+  min-width: 0;
+  height: 33px;
+  padding: 7px 11px;
+  border: 1px solid #dedede;
+  border-radius: 7px;
+  background: #fff;
+  color: #252525;
+}
+.campo-formulario input::placeholder { color: #a0a0a0; opacity: 1; }
+.campo-formulario input[aria-invalid='true'] { border-color: #b42318; }
+.botao-principal {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #3d3d3d;
+  border-radius: 6px;
+  background: #2c2c2c;
+  color: #fff;
+  line-height: 18px;
+}
+.botao-principal:hover:not(:disabled) { background: #151515; }
+.botao-texto {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #252525;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  line-height: 18px;
+}
+.botao-texto:hover:not(:disabled) { color: #666; }
+.erro-campo { margin: 0; color: #b42318; font-size: 12px; }
+.mensagem-retorno { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 360px) {
+  .cartao-autenticacao { padding: 28px 20px; }
+  .cabecalho-autenticacao h1 { font-size: 33px; }
+}
+@media (pointer: coarse) {
+  .campo-formulario input { min-height: 44px; font-size: 16px; }
+  .botao-principal, .botao-texto { min-height: 44px; }
+}
