@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 raiz = Path(__file__).resolve().parent.parent
 if str(raiz) not in sys.path:
@@ -13,39 +13,43 @@ from src.backend.app.services.colaborativo_service import ColaborativoService
 
 with Session(engine) as session:
     service = ColaborativoService(db_session=session)
-
-    # Pega o primeiro cliente com compras
-    cliente = session.query(Cliente).first()
+    
+    cliente = session.query(Cliente).filter(Cliente.id == 2).first()
 
     if not cliente:
         print("Nenhum cliente cadastrado.")
     else:
         nome_cliente = decrypt_data(cliente.razao_social)
-        print(f"Analisando perfil do cliente ID {cliente.id} ({nome_cliente})...\n")
+        print(
+            f"Analisando perfil do cliente ID {cliente.id} ({nome_cliente})...\n"
+        )
 
-        # 1. Clientes com perfil parecido
-        vizinhos = service.encontrar_clientes_similares(cliente.id, top_k=3)
-        print("--- Clientes com perfil de compra similar ---")
-        for v in vizinhos:
-            vizinho_obj = (
-                session.query(Cliente).filter(Cliente.id == v["cliente_id"]).first()
-            )
-            nome_vizinho = (
-                decrypt_data(vizinho_obj.razao_social)
-                if vizinho_obj
-                else "Desconhecido"
-            )
-            print(
-                f"• Cliente {v['cliente_id']} ({nome_vizinho}) - Similaridade: {v['similaridade']}%"
-            )
+        # 1. Grupos/Redes com perfil parecido (método atualizado)
+        vizinhos = service.encontrar_grupos_similares(cliente.id, top_k=3)
+        print("--- Redes/Grupos com perfil de compra similar ---")
+        if not vizinhos:
+            print("Nenhum grupo similar encontrado com dados suficientes.")
+        else:
+            for v in vizinhos:
+                print(
+                    f"• Grupo: {v['grupo_economico']} - Similaridade: {v['similaridade']}%"
+                )
 
-        # 2. Produtos recomendados para expandir a carteira
-        recomendacoes = service.recomendar_produtos_cliente(cliente.id, top_n_produtos=5)
+       # 2. Recomendações
         print("\n--- Produtos recomendados para oferta (Expansão de Mix) ---")
+        recomendacoes = service.recomendar_produtos_cliente(
+            cliente.id, top_n_produtos=5
+        )
         if not recomendacoes:
-            print("Nenhuma oportunidade encontrada ou dados insuficientes.")
+            print("Nenhuma recomendação gerada para este perfil.")
         else:
             for rec in recomendacoes:
                 print(f"★ [{rec['sku']}] {rec['nome']}")
-                print(f"   Score: {rec['score_relevancia']} | {rec['motivo']}")
+                print(
+                    f"   Afinidade: {rec['afinidade_percentual']}% ({rec['classificacao']})"
+                )
+                print(
+                    f"   Sugestão de Compra: {rec['volume_sugerido_unidades']} un."
+                )
+                print(f"   Motivo: {rec['motivo']}")
                 print("-" * 60)

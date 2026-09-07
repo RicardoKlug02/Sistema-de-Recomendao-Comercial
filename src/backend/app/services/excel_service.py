@@ -12,8 +12,26 @@ from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
 from src.backend.app.models.vendedor import Vendedor
 
-
 class ExcelService:
+
+    def normalizar_sku(sku_raw: str) -> str:
+        """Normaliza o SKU consolidando variações como 'U' (embalagem unitária).
+
+        Exemplos:
+        '39189U' -> '39189'
+        '31926U' -> '31926'
+        '5.50.10.SI' -> '5.50.10.SI' (não altera)
+        """
+        if not sku_raw:
+            return ""
+
+        sku_limpo = str(sku_raw).strip()
+
+        # Se terminar com 'U' maiúsculo ou minúsculo após dígitos ou traço
+        # Ex: 39189U vira 39189, mas preserva SKUs que sejam palavras inteiras se houver
+        sku_normalizado = re.sub(r"(?<=\d)[uU]$", "", sku_limpo).strip()
+
+        return sku_normalizado
 
     def __init__(self, db_session: Session):
         self.db = db_session
@@ -100,6 +118,10 @@ class ExcelService:
             elif any(termo in col for termo in ["cliente", "razao", "nome"]) and "cliente" not in ja_mapeados:
                 novo_map[col] = "cliente"
                 ja_mapeados.add("cliente")
+                # Adicione nos ifs/elifs de renomeação:
+            elif any(termo in col for termo in ["rede", "grupo"]) and "rede" not in ja_mapeados:
+                novo_map[col] = "rede"
+                ja_mapeados.add("rede")
 
         df = df.rename(columns=novo_map)
 
@@ -198,7 +220,7 @@ class ExcelService:
             self.db.add(fabrica)
             self.db.flush()
 
-        # 2. Cache e Sincronização de Clientes (com Anonimização LGPD + Criptografia Reversível)
+        # 2. Cache e Sincronização de Clientes (com Anonimização LGPD + Grupo Econômico)
         clientes_cache = {
             c.cnpj_cpf: c.id
             for c in self.db.query(Cliente.cnpj_cpf, Cliente.id).all()
@@ -209,21 +231,37 @@ class ExcelService:
                 continue
 
             doc_anon = f"CLI_{self._anonimizar(doc_real)}"
-            
-            # Pega o nome real da planilha (se existir) para encriptar
+
+            # 1. Trata o nome real com fallback
             nome_real = str(row.get("cliente", "")).strip()
             if not nome_real or nome_real == "nan":
                 nome_real = f"Cliente {doc_anon[:10]}"
 
+            # 2. Trata a Rede / Grupo Econômico
+            rede_raw = str(row.get("rede", "")).strip()
+            if rede_raw and rede_raw != "nan":
+                # Anonimiza o nome da rede mantendo um identificador fixo para todas as filiais
+                rede_anon = f"GRUPO_{self._anonimizar(rede_raw)[:10]}"
+            else:
+                # Se não pertencer a nenhuma rede, o próprio identificador do cliente é o seu grupo
+                rede_anon = doc_anon
+
             if doc_anon not in clientes_cache:
                 cliente = Cliente(
-                    cnpj_cpf=doc_anon,                          # Hash determinístico (para o motor de ML)
-                    razao_social=encrypt_data(nome_real),        # Criptografado no banco (para exibir ao vendedor autenticado)
-                    nome_fantasia=encrypt_data(nome_real),       # Criptografado no banco
+                    cnpj_cpf=doc_anon,
+                    razao_social=encrypt_data(nome_real),
+                    nome_fantasia=encrypt_data(nome_real),
+                    grupo_economico=rede_anon,  # <- salva o grupo econômico aqui
                 )
                 self.db.add(cliente)
                 self.db.flush()
                 clientes_cache[doc_anon] = cliente.id
+            else:
+                # Se o cliente já foi importado antes sem o campo, atualiza o grupo
+                c_id = clientes_cache[doc_anon]
+                cliente_existente = self.db.query(Cliente).filter(Cliente.id == c_id).first()
+                if cliente_existente and not cliente_existente.grupo_economico:
+                    cliente_existente.grupo_economico = rede_anon
 
         # 3. Cache e Sincronização de Vendedores (Anonimizados)
         vendedores_cache = {
