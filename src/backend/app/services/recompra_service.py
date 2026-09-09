@@ -1,5 +1,5 @@
-from datetime import date, datetime
-from typing import Any, Dict, List
+from datetime import date, timedelta
+from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -15,145 +15,78 @@ class RecompraService:
     def __init__(self, db_session: Session):
         self.db = db_session
 
-    def _carregar_historico_compras(
-        self, cliente_id: int = None
+    def _obter_identificador_grupo(self, cliente_id: int) -> str:
+        cliente = (
+            self.db.query(Cliente.grupo_economico, Cliente.cnpj_cpf)
+            .filter(Cliente.id == cliente_id)
+            .first()
+        )
+        if not cliente:
+            return ""
+        return cliente.grupo_economico or cliente.cnpj_cpf
+
+    def _carregar_historico_cliente_ou_grupo(
+        self, cliente_id: int
     ) -> pd.DataFrame:
-        """Carrega transações com datas para análise de periodicidade."""
+        """Carrega todas as compras realizadas pelo grupo econômico do cliente,
+
+        garantindo visão consolidada entre matriz e filiais.
+        """
+        grupo_alvo = self._obter_identificador_grupo(cliente_id)
+        if not grupo_alvo:
+            return pd.DataFrame()
+
         query = (
             self.db.query(
-                Venda.cliente_id,
                 Venda.data_venda,
                 Produto.id.label("produto_id"),
                 Produto.sku,
                 Produto.nome.label("produto_nome"),
                 ItemVenda.quantidade,
             )
+            .join(Cliente, Cliente.id == Venda.cliente_id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
             .join(Produto, Produto.id == ItemVenda.produto_id)
+            .filter(
+                (Cliente.grupo_economico == grupo_alvo)
+                | (Cliente.cnpj_cpf == grupo_alvo)
+            )
+            .order_by(Venda.data_venda.asc())
+            .statement
         )
 
-        if cliente_id:
-            query = query.filter(Venda.cliente_id == cliente_id)
-
-        df = pd.read_sql(query.statement, self.db.bind)
-
+        df = pd.read_sql(query, self.db.bind)
         if not df.empty:
             df["data_venda"] = pd.to_datetime(df["data_venda"])
-
         return df
 
-    def analisar_oportunidades_cliente(
+    def obter_alertas_globais_alto_volume(
         self,
-        cliente_id: int,
-        data_referencia: date = None,
-        margem_tolerancia_dias: int = 5,
+        percentil_volume: float = 0.70,
+        limite_alertas: int = 10,
+        data_referencia: Optional[date] = None,
     ) -> List[Dict[str, Any]]:
-        """Calcula o ciclo de reposição por produto para um cliente específico."""
-        df = self._carregar_historico_compras(cliente_id=cliente_id)
+        """Varre toda a base para a tela inicial, identificando produtos de alto volume
 
-        if df.empty:
-            return []
-
-        hoje = pd.to_datetime(data_referencia or date.today())
-        oportunidades = []
-
-        # Agrupa por produto para calcular o ciclo de recompra de cada um
-        for (prod_id, sku, nome), grupo in df.groupby(
-            ["produto_id", "sku", "produto_nome"]
-        ):
-            # Ordena as datas de compra do produto
-            datas = (
-                grupo["data_venda"].drop_duplicates().sort_values().tolist()
-            )
-            qtd_compras = len(datas)
-
-            # Caso 1: Comprou apenas 1 vez (não há ciclo histórico calculado)
-            if qtd_compras < 2:
-                ultima_compra = datas[-1]
-                dias_desde_ultima = (hoje - ultima_compra).days
-
-                # Se já comprou há mais de 45 dias, sinaliza como reativação
-                if dias_desde_ultima >= 45:
-                    oportunidades.append(
-                        {
-                            "produto_id": int(prod_id),
-                            "sku": sku,
-                            "produto": nome,
-                            "tipo_alerta": "Compra Única - Reativação",
-                            "ciclo_medio_dias": None,
-                            "dias_desde_ultima_compra": dias_desde_ultima,
-                            "dias_atraso": None,
-                            "data_ultima_compra": ultima_compra.strftime(
-                                "%Y-%m-%d"
-                            ),
-                            "urgencia": "Média",
-                        }
-                    )
-                continue
-
-            # Caso 2: Comprou 2 ou mais vezes (calcula a média de dias entre compras)
-            diferencas = [
-                (datas[i] - datas[i - 1]).days for i in range(1, len(datas))
-            ]
-            ciclo_medio = float(np.mean(diferencas))
-
-            ultima_compra = datas[-1]
-            dias_desde_ultima = (hoje - ultima_compra).days
-            data_prevista = ultima_compra + pd.Timedelta(days=ciclo_medio)
-            dias_atraso = dias_desde_ultima - int(ciclo_medio)
-
-            # Só sugere se já estiver na janela de recompra (dentro da margem ou atrasado)
-            if dias_desde_ultima >= (ciclo_medio - margem_tolerancia_dias):
-                if dias_atraso > 15:
-                    urgencia = "Crítica (Risco de Churn)"
-                elif dias_atraso > 0:
-                    urgencia = "Alta (Vencido)"
-                else:
-                    urgencia = "Oportunidade (Janela Aberta)"
-
-                oportunidades.append(
-                    {
-                        "produto_id": int(prod_id),
-                        "sku": sku,
-                        "produto": nome,
-                        "tipo_alerta": "Reposição Recorrente",
-                        "total_compras_historico": qtd_compras,
-                        "ciclo_medio_dias": round(ciclo_medio, 1),
-                        "dias_desde_ultima_compra": dias_desde_ultima,
-                        "dias_atraso": dias_atraso,
-                        "data_ultima_compra": ultima_compra.strftime(
-                            "%Y-%m-%d"
-                        ),
-                        "data_prevista_recompra": data_prevista.strftime(
-                            "%Y-%m-%d"
-                        ),
-                        "urgencia": urgencia,
-                    }
-                )
-
-        # Ordena priorizando os produtos com maior atraso
-        oportunidades.sort(
-            key=lambda x: (
-                x.get("dias_atraso") is not None,
-                x.get("dias_atraso", 0),
-            ),
-            reverse=True,
-        )
-
-        return oportunidades
-
-    def listar_clientes_em_risco(
-        self, limite_dias_sem_comprar: int = 60
-    ) -> List[Dict[str, Any]]:
-        """Varre todos os clientes e lista aqueles que pararam de comprar qualquer produto."""
+        que estão com a recompra atrasada ou em risco de churn.
+        """
+        # 1. Carrega todas as vendas consolidadas com identificador do grupo/cliente
         query = (
             self.db.query(
                 Cliente.id.label("cliente_id"),
                 Cliente.razao_social,
+                Cliente.grupo_economico,
                 Cliente.cnpj_cpf,
+                Produto.id.label("produto_id"),
+                Produto.sku,
+                Produto.nome.label("produto_nome"),
                 Venda.data_venda,
+                ItemVenda.quantidade,
             )
-            .join(Venda, Venda.cliente_id == Cliente.id)
+            .join(Cliente, Cliente.id == Venda.cliente_id)
+            .join(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .join(Produto, Produto.id == ItemVenda.produto_id)
+            .order_by(Venda.data_venda.asc())
             .statement
         )
 
@@ -162,25 +95,160 @@ class RecompraService:
             return []
 
         df["data_venda"] = pd.to_datetime(df["data_venda"])
-        hoje = pd.to_datetime(date.today())
+        df["grupo_analitico"] = df["grupo_economico"].fillna(df["cnpj_cpf"])
 
-        clientes_inativos = []
-        for (c_id, razao, cnpj), grupo in df.groupby(
-            ["cliente_id", "razao_social", "cnpj_cpf"]
+        ponto_corte = (
+            pd.to_datetime(data_referencia)
+            if data_referencia
+            else df["data_venda"].max()
+        )
+
+        # 2. Define o limiar de alto volume na carteira
+        corte_qtd = df["quantidade"].quantile(percentil_volume)
+
+        alertas_globais = []
+
+        # Agrupa por cliente/grupo e produto
+        for (grupo, prod_id), group in df.groupby(
+            ["grupo_analitico", "produto_id"]
         ):
-            ultima_venda = grupo["data_venda"].max()
-            dias_inativo = (hoje - ultima_venda).days
+            datas_unicas = sorted(
+                group["data_venda"].drop_duplicates().tolist()
+            )
+            if len(datas_unicas) < 2:
+                continue
 
-            if dias_inativo >= limite_dias_sem_comprar:
-                clientes_inativos.append(
+            vol_medio = group["quantidade"].mean()
+            # Filtra apenas itens com saída relevante (alto volume)
+            if vol_medio < corte_qtd:
+                continue
+
+            intervalos = [
+                (datas_unicas[i] - datas_unicas[i - 1]).days
+                for i in range(1, len(datas_unicas))
+            ]
+            periodicidade = float(np.mean(intervalos))
+            ultima_compra = datas_unicas[-1]
+            dias_desde_ultima = (ponto_corte - ultima_compra).days
+            dias_esperados = int(round(periodicidade))
+            dias_atraso = dias_desde_ultima - dias_esperados
+
+            # Apenas itens em atraso ou risco de churn
+            if dias_atraso > 5:
+                status = (
+                    "Risco Crítico de Churn"
+                    if dias_atraso > (dias_esperados * 1.5)
+                    else "Atrasado"
+                )
+                cliente_ref = group.iloc[0]
+
+                alertas_globais.append(
                     {
-                        "cliente_id": int(c_id),
-                        "razao_social": razao,
-                        "cnpj_cpf": cnpj,
-                        "dias_inativo": dias_inativo,
-                        "ultima_compra": ultima_venda.strftime("%Y-%m-%d"),
+                        "cliente_id": int(cliente_ref["cliente_id"]),
+                        "razao_social_raw": cliente_ref["razao_social"],
+                        "grupo_economico": grupo,
+                        "produto_id": int(prod_id),
+                        "sku": cliente_ref["sku"],
+                        "nome_produto": cliente_ref["produto_nome"],
+                        "volume_medio_pedido": int(round(vol_medio)),
+                        "periodicidade_dias": round(periodicidade, 1),
+                        "dias_atraso": dias_atraso,
+                        "status": status,
                     }
                 )
 
-        clientes_inativos.sort(key=lambda x: x["dias_inativo"], reverse=True)
-        return clientes_inativos
+        # Ordena pelos atrasos mais críticos e maiores volumes
+        alertas_globais.sort(
+            key=lambda x: (x["status"] == "Risco Crítico de Churn", x["dias_atraso"] * x["volume_medio_pedido"]),
+            reverse=True,
+        )
+
+        return alertas_globais[:limite_alertas]
+
+    def analisar_oportunidades_cliente(
+        self,
+        cliente_id: int,
+        data_referencia: Optional[date] = None,
+        margem_tolerancia_dias: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Gera a lista de produtos com periodicidade mapeada e seus status de reposição."""
+        df = self._carregar_historico_cliente_ou_grupo(cliente_id=cliente_id)
+
+        if df.empty:
+            return []
+
+        # Data de corte: usa data_referencia ou a maior data registrada no histórico do banco
+        if data_referencia:
+            ponto_corte = pd.to_datetime(data_referencia)
+        else:
+            ponto_corte = df["data_venda"].max()
+
+        oportunidades = []
+
+        # Analisa o histórico de cada produto individualmente
+        for produto_id, group in df.groupby("produto_id"):
+            datas_unicas = sorted(group["data_venda"].drop_duplicates().tolist())
+            total_compras = len(datas_unicas)
+
+            # Só conseguimos calcular periodicidade se o cliente comprou pelo menos 2 vezes em datas diferentes
+            if total_compras < 2:
+                continue
+
+            # Calcula intervalos em dias entre as compras consecutivas
+            intervalos = [
+                (datas_unicas[i] - datas_unicas[i - 1]).days
+                for i in range(1, len(datas_unicas))
+            ]
+            periodicidade_media = float(np.mean(intervalos))
+
+            # Dados da última compra
+            ultima_compra = datas_unicas[-1]
+            dias_desde_ultima = (ponto_corte - ultima_compra).days
+
+            # Previsão da próxima compra e atraso
+            dias_esperados = int(round(periodicidade_media))
+            data_prevista = (ultima_compra + timedelta(days=dias_esperados)).date()
+            dias_atraso = dias_desde_ultima - dias_esperados
+
+            # Classificação de status
+            if dias_atraso > (dias_esperados * 1.5):
+                status = "Risco Crítico de Churn"
+                nivel_prioridade = 1
+            elif dias_atraso > margem_tolerancia_dias:
+                status = "Atrasado (Reposição Necessária)"
+                nivel_prioridade = 2
+            elif abs(dias_atraso) <= margem_tolerancia_dias:
+                status = "Oportunidade (Janela Ideal de Compra)"
+                nivel_prioridade = 3
+            else:
+                status = "Em Dia"
+                nivel_prioridade = 4
+
+            # Só adiciona itens que são acionáveis comercialmente (descarta 'Em Dia' se quiser focar em alertas)
+            sku = group["sku"].iloc[0]
+            nome = group["produto_nome"].iloc[0]
+            media_volume = int(round(group["quantidade"].mean()))
+
+            oportunidades.append(
+                {
+                    "produto_id": int(produto_id),
+                    "sku": sku,
+                    "nome": nome,
+                    "total_compras_historico": total_compras,
+                    "dias_desde_ultima_compra": dias_desde_ultima,
+                    "periodicidade_media_dias": round(periodicidade_media, 1),
+                    "previsao_proxima_compra": data_prevista,
+                    "dias_atraso": max(0, dias_atraso),
+                    "volume_medio_pedido": media_volume,
+                    "status": status,
+                    "prioridade": nivel_prioridade,
+                }
+            )
+
+        # Ordena priorizando quem está em risco crítico e atraso maior
+        oportunidades_ordenadas = sorted(
+            oportunidades,
+            key=lambda x: (x["prioridade"], -x["dias_atraso"]),
+        )
+
+        return oportunidades_ordenadas

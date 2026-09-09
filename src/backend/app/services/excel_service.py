@@ -12,6 +12,17 @@ from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
 from src.backend.app.models.vendedor import Vendedor
 
+def normalizar_sku(sku_raw: str) -> str:
+    """Normaliza o SKU removendo variações de embalagem unitária (final 'U' ou 'u').
+
+    Ex: '39189U' -> '39189', '31926u' -> '31926'.
+    """
+    if not sku_raw:
+        return ""
+
+    sku_limpo = str(sku_raw).strip()
+    return re.sub(r"(?<=\d)[uU]$", "", sku_limpo).strip()
+
 class ExcelService:
 
     def normalizar_sku(sku_raw: str) -> str:

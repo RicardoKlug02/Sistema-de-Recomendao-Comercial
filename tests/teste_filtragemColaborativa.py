@@ -14,7 +14,7 @@ from src.backend.app.services.colaborativo_service import ColaborativoService
 with Session(engine) as session:
     service = ColaborativoService(db_session=session)
     
-    cliente = session.query(Cliente).filter(Cliente.id == 2).first()
+    cliente = session.query(Cliente).filter(Cliente.id == 20).first()
 
     if not cliente:
         print("Nenhum cliente cadastrado.")
