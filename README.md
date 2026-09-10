@@ -11,9 +11,10 @@ O frontend já permite navegar do login ao dashboard, baseado nos wireframes da 
 | Dashboard | Quatro indicadores, faturamento mensal, vendas por categoria, principais clientes, últimas importações e oportunidades recentes. Dados demonstrativos. |
 | Menu e cards | Componentes reutilizáveis; o menu navega às seções do próprio painel. |
 | Detalhes das oportunidades | Diálogo com cliente, produto, relevância e valor estimado. |
+| Importação | Seleção ou arraste de XLS/XLSX até 10 MB, resultado simulado, detalhes e histórico paginado. Sem envio ao backend. |
 | Backend | Estrutura inicial em FastAPI, modelos de dados e serviço de importação de planilhas. Ainda não integrado ao frontend. |
 
-As telas completas de clientes e importação, a autenticação real, o motor de recomendação, os alertas e os relatórios com filtros estão previstos para as próximas etapas. JWT ainda não está implementado.
+A tela completa de clientes, a autenticação real, o motor de recomendação, os alertas e os relatórios com filtros estão previstos para as próximas etapas. JWT ainda não está implementado.
 
 ## Tecnologias
 

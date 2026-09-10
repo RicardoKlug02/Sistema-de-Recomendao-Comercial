@@ -4,7 +4,7 @@ const itensMenu = [
   { destino: 'importacoes', titulo: 'Importação', desenho: 'M12 3v12 M7 10l5 5 5-5 M4 16v5h16v-5' },
 ]
 
-// Navega entre os resumos disponíveis no painel e encerra a sessão.
+// Navega entre o painel, o resumo de clientes e a importação.
 export default function MenuLateral({ usuario, secaoAtiva, aoNavegar, aoSair }) {
   return (
     <aside className="menu-lateral">
