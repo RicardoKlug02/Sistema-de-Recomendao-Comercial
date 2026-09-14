@@ -42,7 +42,7 @@ def decrypt_data(cipher_text: str) -> str:
 
     # Pode mover estas constantes para o seu settings/core/config.py se já tiver
 JWT_SECRET_KEY = (
-    "CHAVE_SECRETA_SUPER_SEGURA_TCC_2026"  # Troque ou puxe do seu .env
+    "CHAVE_SECRETA_RAFAEL_RICARDO_2026"  # Troque ou puxe do seu .env
 )
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8  # 8 horas de expediente comercial
@@ -73,3 +73,31 @@ def decodificar_token_acesso(token: str) -> Optional[dict]:
         return payload
     except jwt.PyJWTError:
         return None
+
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+
+# Chave secreta para assinatura dos links (pode ser a mesma do JWT ou do .env)
+CHAVE_SERIALIZER = "CHAVE_SECRETA_RAFAEL_RICARDO_26"
+serializer = URLSafeTimedSerializer(CHAVE_SERIALIZER)
+
+
+def gerar_token_aprovacao(usuario_id: int) -> str:
+    """Gera uma string segura para ser passada na URL do e-mail."""
+    return serializer.dumps(usuario_id, salt="aprovacao-usuario")
+
+
+def validar_token_aprovacao(token: str, max_horas: int = 48) -> int:
+    """Decodifica o link, valida a assinatura e checa se não expirou.
+
+    Retorna o ID do usuário ou levanta erro.
+    """
+    max_idade_segundos = max_horas * 3600
+    try:
+        usuario_id = serializer.loads(
+            token, salt="aprovacao-usuario", max_age=max_idade_segundos
+        )
+        return int(usuario_id)
+    except SignatureExpired:
+        raise ValueError("O link de aprovação expirou.")
+    except BadSignature:
+        raise ValueError("Link de aprovação inválido ou adulterado.")
