@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Importacao from './Importacao'
 import MenuLateral from '../componentes/MenuLateral'
 import Cartao from '../componentes/Cartao'
 import CartaoIndicador from '../componentes/CartaoIndicador'
@@ -12,11 +13,16 @@ export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
   const referenciaDialogo = useRef(null)
   const maiorFaturamento = Math.max(...dadosPainel.faturamentoMensal.map(({ valor }) => valor))
 
-  function navegarParaSecao(destino) {
-    definirSecaoAtiva(destino)
-    const secao = document.getElementById(destino)
+  useEffect(() => {
+    const importando = secaoAtiva === 'importacoes'
+    document.title = `${importando ? 'Importação' : 'Dashboard'} | Sistema de Recomendação Comercial`
+    const secao = document.getElementById(importando ? 'titulo-importacao' : secaoAtiva)
     secao?.focus({ preventScroll: true })
     secao?.scrollIntoView({ block: 'start' })
+  }, [secaoAtiva])
+
+  function navegarParaSecao(destino) {
+    definirSecaoAtiva(destino)
   }
 
   function abrirDetalhes(oportunidade) {
@@ -26,9 +32,10 @@ export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
 
   return (
     <div className="estrutura-painel">
-      <a className="atalho-conteudo" href="#painel">Pular para o conteúdo</a>
+      <a className="atalho-conteudo" href={secaoAtiva === 'importacoes' ? '#titulo-importacao' : '#painel'}>Pular para o conteúdo</a>
       <MenuLateral usuario={usuario} aoSair={aoSair} secaoAtiva={secaoAtiva} aoNavegar={navegarParaSecao} />
-      <main className="conteudo-painel">
+      <Importacao usuario={usuario} ativa={secaoAtiva === 'importacoes'} />
+      <main className="conteudo-painel" hidden={secaoAtiva === 'importacoes'}>
         <header className="cabecalho-painel">
           <div><p className="sobretitulo">VISÃO COMERCIAL</p><h1 id="painel" ref={referenciaTitulo} tabIndex={-1}>Dashboard</h1><p>Visão geral do desempenho comercial</p></div>
           <span className="aviso-demonstracao">Dados demonstrativos</span>
