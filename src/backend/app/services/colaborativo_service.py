@@ -1,7 +1,6 @@
-from typing import Any, Dict, List
-import numpy as np
-import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
+import math
+from collections import defaultdict
+from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.backend.app.models.cliente import Cliente
@@ -15,87 +14,76 @@ class ColaborativoService:
     def __init__(self, db_session: Session):
         self.db = db_session
 
-    def _obter_identificador_grupo(self, cliente_id: int) -> str:
-        """Retorna o grupo_economico do cliente ou o próprio cnpj_cpf se for isolado."""
+    def _obter_identificador_grupo(self, cliente_id: int) -> Optional[str]:
         cliente = (
             self.db.query(Cliente.grupo_economico, Cliente.cnpj_cpf)
             .filter(Cliente.id == cliente_id)
             .first()
         )
         if not cliente:
-            return ""
+            return None
         return cliente.grupo_economico or cliente.cnpj_cpf
 
-    def _montar_matriz_grupo_produto(self) -> pd.DataFrame:
-        """Constrói a matriz Grupo Econômico x Produto.
-
-        Linhas: Identificador consolidado do Grupo Econômico / Rede.
-        Colunas: ID do Produto.
-        Valores: Volume total acumulado comprado por todas as filiais daquele grupo.
-        """
-        query = (
+    def _carregar_perfis_consumo(self) -> Dict[str, Dict[int, float]]:
+        """Mapeia o consumo agregado por grupo econômico: {grupo: {produto_id: quantidade_total}}."""
+        registros = (
             self.db.query(
                 Cliente.grupo_economico,
                 Cliente.cnpj_cpf,
-                Produto.id.label("produto_id"),
+                ItemVenda.produto_id,
                 ItemVenda.quantidade,
             )
             .join(Venda, Venda.cliente_id == Cliente.id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
-            .join(Produto, Produto.id == ItemVenda.produto_id)
-            .statement
+            .all()
         )
 
-        df = pd.read_sql(query, self.db.bind)
+        perfis: Dict[str, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
+        for r in registros:
+            chave_grupo = r.grupo_economico or r.cnpj_cpf
+            perfis[chave_grupo][r.produto_id] += float(r.quantidade)
 
-        if df.empty:
-            return pd.DataFrame()
+        return perfis
 
-        # Se grupo_economico for nulo, faz fallback para o cnpj_cpf do cliente
-        df["grupo_analitico"] = df["grupo_economico"].fillna(df["cnpj_cpf"])
+    @staticmethod
+    def _calcular_similaridade_cosseno(vetor_a: Dict[int, float], vetor_b: Dict[int, float]) -> float:
+        intersecao = set(vetor_a.keys()) & set(vetor_b.keys())
+        if not intersecao:
+            return 0.0
 
-        # Agrupa por Grupo Econômico e Produto, somando as quantidades de todas as filiais
-        matriz = (
-            df.groupby(["grupo_analitico", "produto_id"])["quantidade"]
-            .sum()
-            .unstack(fill_value=0)
-        )
+        produto_escalar = sum(vetor_a[p] * vetor_b[p] for p in intersecao)
+        norma_a = math.sqrt(sum(v ** 2 for v in vetor_a.values()))
+        norma_b = math.sqrt(sum(v ** 2 for v in vetor_b.values()))
 
-        return matriz
+        if norma_a == 0 or norma_b == 0:
+            return 0.0
 
-    def encontrar_grupos_similares(
-        self, cliente_id: int, top_k: int = 5
-    ) -> List[Dict[str, Any]]:
-        """Identifica quais redes/grupos econômicos compram produtos similares ao do cliente informado."""
+        return produto_escalar / (norma_a * norma_b)
+
+    def encontrar_grupos_similares(self, cliente_id: int, top_k: int = 5) -> List[Dict[str, Any]]:
         grupo_alvo = self._obter_identificador_grupo(cliente_id)
-        matriz = self._montar_matriz_grupo_produto()
-
-        if matriz.empty or not grupo_alvo or grupo_alvo not in matriz.index:
+        if not grupo_alvo:
             return []
 
-        # Calcula a similaridade de cosseno entre todas as redes
-        sim_matrix = cosine_similarity(matriz.values)
-        df_sim = pd.DataFrame(
-            sim_matrix, index=matriz.index, columns=matriz.index
-        )
+        perfis = self._carregar_perfis_consumo()
+        if grupo_alvo not in perfis:
+            return []
 
-        score_vizinhos = (
-            df_sim.loc[grupo_alvo].drop(index=grupo_alvo).sort_values(
-                ascending=False
-            )
-        )
+        perfil_alvo = perfis[grupo_alvo]
+        scores = []
 
-        similares = []
-        for grupo, similaridade in score_vizinhos.head(top_k).items():
-            if similaridade > 0:
-                similares.append(
-                    {
-                        "grupo_economico": grupo,
-                        "similaridade": round(float(similaridade) * 100, 2),
-                    }
-                )
+        for outro_grupo, outro_perfil in perfis.items():
+            if outro_grupo == grupo_alvo:
+                continue
+            sim = self._calcular_similaridade_cosseno(perfil_alvo, outro_perfil)
+            if sim > 0:
+                scores.append({
+                    "grupo_economico": outro_grupo,
+                    "similaridade": round(sim * 100, 2),
+                })
 
-        return similares
+        scores.sort(key=lambda x: x["similaridade"], reverse=True)
+        return scores[:top_k]
 
     def recomendar_produtos_cliente(
         self,
@@ -103,120 +91,85 @@ class ColaborativoService:
         top_k_vizinhos: int = 5,
         top_n_produtos: int = 4,
     ) -> List[Dict[str, Any]]:
-        """Gera recomendações com nota percentual de aderência (0-100%)
-
-        e sugestão de volume estimado de compra.
-        """
+        """Gera recomendações de mix cruzando com grupos econômicos de comportamento análogo."""
         grupo_alvo = self._obter_identificador_grupo(cliente_id)
-        matriz = self._montar_matriz_grupo_produto()
-
-        if (
-            matriz.empty
-            or not grupo_alvo
-            or grupo_alvo not in matriz.index
-            or len(matriz.index) < 2
-        ):
+        if not grupo_alvo:
             return []
 
-        # 1. Identifica os vizinhos mais similares via Cosseno
-        sim_matrix = cosine_similarity(matriz.values)
-        df_sim = pd.DataFrame(
-            sim_matrix, index=matriz.index, columns=matriz.index
-        )
-
-        vizinhos = df_sim.loc[grupo_alvo].drop(index=grupo_alvo)
-        vizinhos = vizinhos[vizinhos > 0].sort_values(ascending=False).head(
-            top_k_vizinhos
-        )
-
-        if vizinhos.empty:
+        perfis = self._carregar_perfis_consumo()
+        if grupo_alvo not in perfis or len(perfis) < 2:
             return []
 
-        # 2. Produtos que qualquer filial do grupo já comprou
-        produtos_grupo = set(matriz.columns[matriz.loc[grupo_alvo] > 0])
+        perfil_alvo = perfis[grupo_alvo]
+        produtos_ja_comprados = set(perfil_alvo.keys())
 
-        sub_matriz_vizinhos = matriz.loc[vizinhos.index]
-        pesos_similaridade = vizinhos.values
-        soma_pesos = np.sum(pesos_similaridade)
+        vizinhos_scores = []
+        for outro_grupo, outro_perfil in perfis.items():
+            if outro_grupo == grupo_alvo:
+                continue
+            sim = self._calcular_similaridade_cosseno(perfil_alvo, outro_perfil)
+            if sim > 0:
+                vizinhos_scores.append((outro_grupo, sim))
+
+        vizinhos_scores.sort(key=lambda x: x[1], reverse=True)
+        vizinhos_top = vizinhos_scores[:top_k_vizinhos]
+
+        if not vizinhos_top:
+            return []
+
+        soma_pesos = sum(sim for _, sim in vizinhos_top)
+        candidatos: Dict[int, Dict[str, float]] = defaultdict(lambda: {"peso_compradores": 0.0, "volume_ponderado": 0.0})
+
+        for outro_grupo, sim in vizinhos_top:
+            perfil_vizinho = perfis[outro_grupo]
+            for prod_id, qtd in perfil_vizinho.items():
+                if prod_id in produtos_ja_comprados:
+                    continue
+                candidatos[prod_id]["peso_compradores"] += sim
+                candidatos[prod_id]["volume_ponderado"] += (qtd * sim)
+
+        if not candidatos:
+            return []
 
         produtos_avaliados = []
+        for prod_id, metricas in candidatos.items():
+            afinidade_pct = (metricas["peso_compradores"] / soma_pesos) * 100
+            volume_sugerido = metricas["volume_ponderado"] / metricas["peso_compradores"]
 
-        for prod_id in matriz.columns:
-            if prod_id in produtos_grupo:
-                continue
+            produtos_avaliados.append({
+                "produto_id": prod_id,
+                "afinidade_pct": round(afinidade_pct, 1),
+                "volume_sugerido": int(math.ceil(volume_sugerido)),
+            })
 
-            compras_vizinhos = sub_matriz_vizinhos[prod_id].values
+        produtos_avaliados.sort(key=lambda x: (x["afinidade_pct"], x["volume_sugerido"]), reverse=True)
+        top_produtos = produtos_avaliados[:top_n_produtos]
 
-            # Se nenhum vizinho comprou, descarta
-            if np.sum(compras_vizinhos) == 0:
-                continue
-
-            # Métrica A: Percentual de Afinidade / Confiança (0% a 100%)
-            # Analisa o consenso: quão forte é a adoção desse item entre os similares
-            vizinhos_que_compraram = (compras_vizinhos > 0).astype(int)
-            afinidade_pct = (
-                np.dot(vizinhos_que_compraram, pesos_similaridade) / soma_pesos
-            ) * 100
-
-            # Métrica B: Volume Sugerido (Média ponderada do que os vizinhos compram)
-            # Calculada apenas sobre quem efetivamente compra para não subestimar lote
-            vizinhos_ativos = compras_vizinhos > 0
-            if np.any(vizinhos_ativos):
-                volume_estimado = np.dot(
-                    compras_vizinhos[vizinhos_ativos],
-                    pesos_similaridade[vizinhos_ativos],
-                ) / np.sum(pesos_similaridade[vizinhos_ativos])
-            else:
-                volume_estimado = 0.0
-
-            produtos_avaliados.append(
-                {
-                    "produto_id": prod_id,
-                    "afinidade_pct": round(float(afinidade_pct), 1),
-                    "volume_sugerido": int(np.ceil(volume_estimado)),
-                }
-            )
-
-        if not produtos_avaliados:
-            return []
-
-        # 3. Ordena pela nota de afinidade (%) e desempata pelo volume sugerido
-        produtos_ranqueados = sorted(
-            produtos_avaliados,
-            key=lambda x: (x["afinidade_pct"], x["volume_sugerido"]),
-            reverse=True,
-        )[:top_n_produtos]
-
-        # 4. Busca metadados dos produtos
-        produtos_ids = [p["produto_id"] for p in produtos_ranqueados]
-        produtos_db = (
-            self.db.query(Produto).filter(Produto.id.in_(produtos_ids)).all()
-        )
-        mapa_produtos = {p.id: p for p in produtos_db}
+        ids = [p["produto_id"] for p in top_produtos]
+        produtos_db = {p.id: p for p in self.db.query(Produto).filter(Produto.id.in_(ids)).all()}
 
         recomendacoes = []
-        for item in produtos_ranqueados:
-            prod = mapa_produtos.get(item["produto_id"])
-            if prod:
-                # Classificação em nota/estrelas para a UI
-                nota = item["afinidade_pct"]
-                if nota >= 80:
-                    status = "Altíssima Aderência"
-                elif nota >= 50:
-                    status = "Aderência Moderada"
-                else:
-                    status = "Oportunidade Complementar"
+        for item in top_produtos:
+            prod = produtos_db.get(item["produto_id"])
+            if not prod:
+                continue
 
-                recomendacoes.append(
-                    {
-                        "produto_id": prod.id,
-                        "sku": prod.sku,
-                        "nome": prod.nome,
-                        "afinidade_percentual": item["afinidade_pct"],
-                        "classificacao": status,
-                        "volume_sugerido_unidades": item["volume_sugerido"],
-                        "motivo": f"Comprado por {item['afinidade_pct']}% dos clientes de perfil similar",
-                    }
-                )
+            nota = item["afinidade_pct"]
+            if nota >= 75:
+                status = "Altíssima Aderência"
+            elif nota >= 40:
+                status = "Aderência Moderada"
+            else:
+                status = "Oportunidade Complementar"
+
+            recomendacoes.append({
+                "produto_id": prod.id,
+                "sku": prod.sku,
+                "nome": prod.nome,
+                "afinidade_percentual": item["afinidade_pct"],
+                "classificacao": status,
+                "volume_sugerido_unidades": item["volume_sugerido"],
+                "motivo": f"Comprado por redes com {item['afinidade_pct']}% de afinidade",
+            })
 
         return recomendacoes

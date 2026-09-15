@@ -1,170 +1,316 @@
+from collections import defaultdict
+from datetime import date
+import re
+from typing import Any, Dict, List, Optional
+from dateutil.relativedelta import relativedelta
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from src.backend.app.core.security import gerar_blind_index
+from src.backend.app.models.cliente import Cliente
+from src.backend.app.models.fabrica import Fabrica
+from src.backend.app.models.item_venda import ItemVenda
+from src.backend.app.models.produto import Produto
+from src.backend.app.models.venda import Venda
+from src.backend.app.services.colaborativo_service import ColaborativoService
+
+
 class ClienteService:
+
     def __init__(self, db_session: Session):
         self.db = db_session
+        self.colaborativo = ColaborativoService(db_session=db_session)
 
-    def buscar_por_termo(self, termo: str, limite: int = 8):
-        """Busca rápida por Razão Social (case-insensitive) ou CNPJ"""
-        filtro = f"%{termo}%"
-        return (
-            self.db.query(Cliente.id, Cliente.razao_social, Cliente.cnpj)
+    def buscar_por_termo(self, termo: str, limite: int = 15) -> List[Dict[str, Any]]:
+        """Busca híbrida: Blind Index para documento ou varredura decifrada para texto."""
+        termo_limpo = termo.strip()
+        apenas_digitos = re.sub(r"\D", "", termo_limpo)
+
+        # 1. Busca Exata por CNPJ/CPF via Blind Index O(1)
+        if len(apenas_digitos) >= 8:
+            hash_busca = gerar_blind_index(apenas_digitos)
+            cliente = (
+                self.db.query(Cliente)
+                .filter(Cliente.cnpj_hash == hash_busca)
+                .first()
+            )
+            if cliente:
+                return [
+                    {
+                        "id": cliente.id,
+                        "razao_social": cliente.razao_social,
+                        "nome_fantasia": cliente.nome_fantasia,
+                        "cnpj_cpf": cliente.cnpj_cpf,
+                        "grupo_economico": cliente.grupo_economico,
+                        "cidade": cliente.cidade,
+                        "estado": cliente.estado,
+                    }
+                ]
+
+        # 2. Busca por Grupo Econômico ou Localidade (Indexados no banco)
+        clientes_query = (
+            self.db.query(Cliente)
             .filter(
-                (Cliente.razao_social.ilike(filtro)) | 
-                (Cliente.cnpj.like(filtro))
+                or_(
+                    Cliente.grupo_economico.ilike(f"%{termo_limpo}%"),
+                    Cliente.cidade.ilike(f"%{termo_limpo}%"),
+                )
             )
             .limit(limite)
             .all()
         )
+        if clientes_query:
+            return [
+                {
+                    "id": c.id,
+                    "razao_social": c.razao_social,
+                    "nome_fantasia": c.nome_fantasia,
+                    "cnpj_cpf": c.cnpj_cpf,
+                    "grupo_economico": c.grupo_economico,
+                    "cidade": c.cidade,
+                    "estado": c.estado,
+                }
+                for c in clientes_query
+            ]
 
-from sqlalchemy.orm import Session
-from sqlalchemy import func, distinct
-from app.models import Cliente, Regiao, Pedido, ItemPedido, Produto # Ajuste conforme seus models
+        # 3. Varredura decifrada em memória (Fallback para Razão Social / Nome Fantasia)
+        candidatos = self.db.query(Cliente).limit(300).all()
+        termo_lower = termo_limpo.lower()
+        resultados = []
 
-class ClienteService:
-    def __init__(self, db_session: Session):
-        self.db = db_session
+        for c in candidatos:
+            razao = (c.razao_social or "").lower()
+            fantasia = (c.nome_fantasia or "").lower()
+            if termo_lower in razao or termo_lower in fantasia:
+                resultados.append(
+                    {
+                        "id": c.id,
+                        "razao_social": c.razao_social,
+                        "nome_fantasia": c.nome_fantasia,
+                        "cnpj_cpf": c.cnpj_cpf,
+                        "grupo_economico": c.grupo_economico,
+                        "cidade": c.cidade,
+                        "estado": c.estado,
+                    }
+                )
+                if len(resultados) >= limite:
+                    break
 
-    def obter_relatorio_completo(self, cliente_id: int):
-        inicio_mes, fim_mes, inicio_6m = obter_janelas_temporais()
+        return resultados
 
-        # 1. Dados Cadastrais e Métricas do Mês Cheio
-        dados_base = (
-            self.db.query(
-                Cliente.id,
-                Cliente.razao_social,
-                Cliente.cnpj,
-                Regiao.nome.label("regiao"),
-                func.coalesce(func.sum(Pedido.valor_total), 0.0).label("vendas_mes"),
-                func.count(Pedido.id).label("pedidos_mes")
-            )
-            .join(Regiao, Cliente.regiao_id == Regiao.id)
-            .outerjoin(
-                Pedido,
-                (Pedido.cliente_id == Cliente.id) & 
-                (Pedido.data >= inicio_mes) & 
-                (Pedido.data <= fim_mes)
-            )
-            .filter(Cliente.id == cliente_id)
-            .group_by(Cliente.id, Regiao.nome)
-            .first()
-        )
+    def obter_dossie_cliente(
+        self, cliente_id: int, ref_date: Optional[date] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Dossiê analítico 360: histórico, ciclo de fábrica, reposição, abandono e YoY."""
+        ref = ref_date or date.today()
 
-        if not dados_base:
+        cliente = self.db.query(Cliente).filter(Cliente.id == cliente_id).first()
+        if not cliente:
             return None
 
-        # 2. Itens comprados nos últimos 6 meses
-        itens_6m = (
+        registros = (
             self.db.query(
-                Produto.id.label("produto_id"),
-                Produto.nome.label("nome_produto"),
-                func.sum(ItemPedido.quantidade).label("quantidade"),
-                func.sum(ItemPedido.valor_total).label("valor_total"),
-                func.max(Pedido.data).label("ultima_compra")
+                Venda.id.label("venda_id"),
+                Venda.data_venda,
+                Venda.valor_total,
+                Fabrica.id.label("fabrica_id"),
+                Fabrica.nome_fantasia.label("fabrica_nome"),
+                ItemVenda.produto_id,
+                ItemVenda.quantidade,
+                Produto.sku,
+                Produto.nome.label("produto_nome"),
             )
-            .join(ItemPedido, ItemPedido.produto_id == Produto.id)
-            .join(Pedido, ItemPedido.pedido_id == Pedido.id)
-            .filter(
-                Pedido.cliente_id == cliente_id,
-                Pedido.data >= inicio_6m,
-                Pedido.data <= fim_mes
-            )
-            .group_by(Produto.id, Produto.nome)
-            .order_by(func.sum(ItemPedido.valor_total).desc())
+            .join(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .join(Produto, Produto.id == ItemVenda.produto_id)
+            .join(Fabrica, Fabrica.id == Venda.fabrica_id)
+            .filter(Venda.cliente_id == cliente_id)
+            .order_by(Venda.data_venda.asc())
             .all()
         )
 
-        # 3. Itens Inativos (Comprou historicamente, mas NÃO comprou nos últimos 6 meses)
-        ids_comprados_recentemente = [i.produto_id for i in itens_6m]
-        
-        itens_inativos_query = (
-            self.db.query(
-                Produto.id.label("produto_id"),
-                Produto.nome.label("nome_produto"),
-                func.sum(ItemPedido.quantidade).label("quantidade"),
-                func.sum(ItemPedido.valor_total).label("valor_total"),
-                func.max(Pedido.data).label("ultima_compra")
-            )
-            .join(ItemPedido, ItemPedido.produto_id == Produto.id)
-            .join(Pedido, ItemPedido.pedido_id == Pedido.id)
-            .filter(
-                Pedido.cliente_id == cliente_id,
-                Pedido.data < inicio_6m
-            )
-        )
-        if ids_comprados_recentemente:
-            itens_inativos_query = itens_inativos_query.filter(Produto.id.notin_(ids_comprados_recentemente))
-            
-        itens_inativos = (
-            itens_inativos_query
-            .group_by(Produto.id, Produto.nome)
-            .order_by(func.max(Pedido.data).desc())
-            .limit(10)
-            .all()
-        )
+        base_info = {
+            "cliente_id": cliente.id,
+            "razao_social": cliente.razao_social,
+            "cnpj_cpf": cliente.cnpj_cpf,
+            "micro_regiao": cliente.micro_regiao,
+            "grupo_economico": cliente.grupo_economico,
+        }
 
-        # 4. Recomendações (Ex: Produtos mais vendidos na região do cliente que ele ainda não compra)
-        produtos_recomendados = (
-            self.db.query(
-                Produto.id.label("produto_id"),
-                Produto.nome.label("nome_produto"),
-                func.count(distinct(Pedido.cliente_id)).label("penetracao_regiao")
-            )
-            .join(ItemPedido, ItemPedido.produto_id == Produto.id)
-            .join(Pedido, ItemPedido.pedido_id == Pedido.id)
-            .join(Cliente, Pedido.cliente_id == Cliente.id)
-            .filter(
-                Cliente.regiao_id == Cliente.regiao_id, # Mesma região
-                Pedido.data >= inicio_6m
-            )
-        )
-        if ids_comprados_recentemente:
-            produtos_recomendados = produtos_recomendados.filter(Produto.id.notin_(ids_comprados_recentemente))
-
-        recomendacoes_raw = (
-            produtos_recomendados
-            .group_by(Produto.id, Produto.nome)
-            .order_by(func.count(distinct(Pedido.cliente_id)).desc())
-            .limit(5)
-            .all()
-        )
-
-        recomendacoes = [
-            {
-                "produto_id": r.produto_id,
-                "nome_produto": r.nome_produto,
-                "motivo": "Popular na sua região",
-                "score_relevancia": float(r.penetracao_regiao)
+        if not registros:
+            return {
+                **base_info,
+                "mensagem": "Cliente sem registros de vendas para análise.",
+                "resumo_fabricas": [],
+                "sugestoes_reposicao": [],
+                "produtos_em_abandono": [],
+                "performance_yoy": None,
+                "sugestoes_expansao_mix": [],
             }
-            for r in recomendacoes_raw
-        ]
-
-        ticket_medio = (dados_base.vendas_mes / dados_base.pedidos_mes) if dados_base.pedidos_mes > 0 else 0.0
 
         return {
-            "id": dados_base.id,
-            "razao_social": dados_base.razao_social,
-            "cnpj": dados_base.cnpj,
-            "regiao": dados_base.regiao,
-            "mes_referencia": inicio_mes.strftime("%m/%Y"),
-            "vendas_mes_fechado": float(dados_base.vendas_mes),
-            "pedidos_mes_fechado": int(dados_base.pedidos_mes),
-            "ticket_medio": round(ticket_medio, 2),
-            "itens_inclusos_ultimos_6m": [
+            **base_info,
+            "resumo_fabricas": self._analisar_fabricas(registros, ref),
+            "sugestoes_reposicao": self._analisar_reposicao(registros, ref),
+            "produtos_em_abandono": self._analisar_produtos_abandono(registros, ref),
+            "performance_yoy": self._analisar_yoy(registros, ref),
+            "sugestoes_expansao_mix": (
+                self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=4)
+                if hasattr(self.colaborativo, "recomendar_produtos_cliente")
+                else []
+            ),
+        }
+
+    def _analisar_fabricas(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        fabricas_map = defaultdict(lambda: {"nome": "", "pedidos": {}})
+        for r in registros:
+            fabricas_map[r.fabrica_id]["nome"] = r.fabrica_nome
+            fabricas_map[r.fabrica_id]["pedidos"][r.venda_id] = r.data_venda
+
+        status_fabricas = []
+        for fid, dados in fabricas_map.items():
+            datas = sorted(dados["pedidos"].values())
+            ultima_compra = datas[-1]
+            dias_sem_comprar = (ref - ultima_compra).days
+
+            if len(datas) > 1:
+                intervalos = [(datas[i] - datas[i - 1]).days for i in range(1, len(datas))]
+                ciclo_medio = int(sum(intervalos) / len(intervalos))
+            else:
+                ciclo_medio = 90
+
+            limite_90d = ultima_compra + relativedelta(days=90)
+            dias_para_vencer = ciclo_medio - dias_sem_comprar
+
+            if dias_sem_comprar >= 90:
+                status = "Inativo na Fábrica"
+                gatilho = "ATRASADO"
+            elif dias_sem_comprar >= ciclo_medio:
+                status = "Ciclo Atrasado"
+                gatilho = "ATRASADO"
+            elif dias_sem_comprar + 7 >= ciclo_medio:
+                status = "Janela de Recompra (7 dias)"
+                gatilho = "PREVISAO_7_DIAS"
+            else:
+                status = "Ativo"
+                gatilho = "REGULAR"
+
+            status_fabricas.append(
                 {
-                    "produto_id": i.produto_id,
-                    "nome_produto": i.nome_produto,
-                    "quantidade": int(i.quantidade),
-                    "valor_total": float(i.valor_total),
-                    "ultima_compra": i.ultima_compra.strftime("%d/%m/%Y") if i.ultima_compra else None
-                } for i in itens_6m
-            ],
-            "itens_inativos": [
-                {
-                    "produto_id": i.produto_id,
-                    "nome_produto": i.nome_produto,
-                    "quantidade": int(i.quantidade),
-                    "valor_total": float(i.valor_total),
-                    "ultima_compra": i.ultima_compra.strftime("%d/%m/%Y") if i.ultima_compra else None
-                } for i in itens_inativos
-            ],
-            "recomendacoes": recomendacoes
+                    "fabrica_id": fid,
+                    "fabrica": dados["nome"],
+                    "ultima_compra": ultima_compra.strftime("%d/%m/%Y"),
+                    "dias_sem_comprar": dias_sem_comprar,
+                    "ciclo_medio_dias": ciclo_medio,
+                    "dias_para_vencer": dias_para_vencer,
+                    "data_limite_inatividade": limite_90d.strftime("%d/%m/%Y"),
+                    "status": status,
+                    "status_gatilho": gatilho,
+                    "risco_bloqueio_neste_mes": (
+                        limite_90d.month == ref.month and limite_90d.year == ref.year
+                    ),
+                }
+            )
+
+        status_fabricas.sort(key=lambda x: x["dias_para_vencer"])
+        return status_fabricas
+
+    def _analisar_reposicao(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "compras": []})
+        for r in registros:
+            produtos_map[r.produto_id]["sku"] = r.sku
+            produtos_map[r.produto_id]["nome"] = r.produto_nome
+            produtos_map[r.produto_id]["compras"].append((r.data_venda, r.quantidade))
+
+        sugestoes = []
+        for pid, dados in produtos_map.items():
+            compras = sorted(dados["compras"], key=lambda x: x[0])
+            datas = [c[0] for c in compras]
+            if len(datas) < 2:
+                continue
+
+            intervalos = [(datas[i] - datas[i - 1]).days for i in range(1, len(datas))]
+            ciclo = int(sum(intervalos) / len(intervalos))
+            ultima = datas[-1]
+            dias_desde_ultima = (ref - ultima).days
+            atraso = dias_desde_ultima - ciclo
+
+            if atraso >= -5 and dias_desde_ultima < (ciclo * 2):
+                media_qtd = sum(c[1] for c in compras) / len(compras)
+                sugestoes.append(
+                    {
+                        "produto_id": pid,
+                        "sku": dados["sku"],
+                        "nome": dados["nome"],
+                        "ciclo_medio": ciclo,
+                        "dias_desde_ultima": dias_desde_ultima,
+                        "status": "Reposição Atrasada" if atraso > 0 else "Janela Ideal",
+                        "volume_habitual": round(float(media_qtd), 0),
+                    }
+                )
+
+        return sugestoes
+
+    def _analisar_produtos_abandono(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "datas": []})
+        for r in registros:
+            produtos_map[r.produto_id]["sku"] = r.sku
+            produtos_map[r.produto_id]["nome"] = r.produto_nome
+            produtos_map[r.produto_id]["datas"].append(r.data_venda)
+
+        abandonados = []
+        for pid, dados in produtos_map.items():
+            datas = sorted(dados["datas"])
+            if len(datas) < 3:
+                continue
+
+            intervalos = [(datas[i] - datas[i - 1]).days for i in range(1, len(datas))]
+            ciclo = int(sum(intervalos) / len(intervalos))
+            dias_sem_comprar = (ref - datas[-1]).days
+
+            if dias_sem_comprar > (ciclo * 2.5) and dias_sem_comprar >= 60:
+                abandonados.append(
+                    {
+                        "produto_id": pid,
+                        "sku": dados["sku"],
+                        "nome": dados["nome"],
+                        "dias_parado": dias_sem_comprar,
+                        "ciclo_habitual": ciclo,
+                        "total_vezes_comprado": len(datas),
+                    }
+                )
+
+        return abandonados
+
+    def _analisar_yoy(self, registros: list, ref: date) -> Dict[str, Any]:
+        mes_recente_inicio = (ref.replace(day=1) - relativedelta(days=1)).replace(day=1)
+        ano_anterior_inicio = mes_recente_inicio - relativedelta(years=1)
+
+        vendas_unicas = {}
+        for r in registros:
+            vendas_unicas[r.venda_id] = (r.data_venda, r.valor_total)
+
+        fat_recente = sum(
+            valor
+            for data_v, valor in vendas_unicas.values()
+            if data_v.year == mes_recente_inicio.year and data_v.month == mes_recente_inicio.month
+        )
+
+        fat_anterior = sum(
+            valor
+            for data_v, valor in vendas_unicas.values()
+            if data_v.year == ano_anterior_inicio.year and data_v.month == ano_anterior_inicio.month
+        )
+
+        variacao = (
+            ((fat_recente - fat_anterior) / fat_anterior * 100)
+            if fat_anterior > 0
+            else 0.0
+        )
+
+        return {
+            "periodo_recente": mes_recente_inicio.strftime("%m/%Y"),
+            "periodo_comparado": ano_anterior_inicio.strftime("%m/%Y"),
+            "faturamento_recente": round(float(fat_recente), 2),
+            "faturamento_ano_anterior": round(float(fat_anterior), 2),
+            "crescimento_pct": round(float(variacao), 2),
         }

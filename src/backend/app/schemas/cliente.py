@@ -1,63 +1,83 @@
+from datetime import date
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
 
-# Usado para entrada de dados (POST /clientes)
-class ClienteCreate(BaseModel):
-    nome: str
-    segmento: str
-    cidade: str
-    estado: str
 
-# Usado para envio ao frontend (GET /clientes/{id})
-class ClienteResponse(ClienteCreate):
+class ClienteBase(BaseModel):
+    razao_social: str
+    nome_fantasia: Optional[str] = None
+    cnpj_cpf: Optional[str] = None
+    grupo_economico: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+
+
+class ClienteOptionOut(ClienteBase):
+    """Schema enxuto para autocomplete e listagem de busca."""
     id: int
 
     model_config = ConfigDict(from_attributes=True)
 
-class ClienteFichaMetricasOut(BaseModel):
-    id: int
-    razao_social: str
-    cnpj: str
-    regiao: str
-    vendas_ultimo_mes: float
-    pedidos_ultimo_mes: int
 
-    class Config:
-        from_attributes = True
+class FabricaResumoOut(BaseModel):
+    fabrica_id: int
+    fabrica: str
+    ultima_compra: str
+    dias_sem_comprar: int
+    ciclo_medio_dias: int
+    dias_para_vencer: int
+    data_limite_inatividade: str
+    status: str
+    status_gatilho: str
+    risco_bloqueio_neste_mes: bool
 
-from pydantic import BaseModel
-from typing import List, Optional
 
-class ItemResumo(BaseModel):
+class ReposicaoOut(BaseModel):
     produto_id: int
-    nome_produto: str
-    quantidade: int
-    valor_total: float
-    ultima_compra: Optional[str] = None
+    sku: str
+    nome: str
+    ciclo_medio: int
+    dias_desde_ultima: int
+    status: str
+    volume_habitual: float
 
-class RecomendacaoItem(BaseModel):
+
+class AbandonoOut(BaseModel):
     produto_id: int
-    nome_produto: str
-    motivo: str # ex: "Mais vendido na sua região", "Reposição recomendada"
-    score_relevancia: float
+    sku: str
+    nome: str
+    dias_parado: int
+    ciclo_habitual: int
+    total_vezes_comprado: int
 
-class RelatorioComplexoClienteOut(BaseModel):
-    # Ficha básica
-    id: int
+
+class YoYOut(BaseModel):
+    periodo_recente: str
+    periodo_comparado: str
+    faturamento_recente: float
+    faturamento_ano_anterior: float
+    crescimento_pct: float
+
+
+class RecomendacaoProdutoOut(BaseModel):
+    produto_id: int
+    sku: str
+    nome: str
+    score: Optional[float] = None
+
+
+class ClienteDetalhesOut(BaseModel):
+    """Dossiê Analítico 360 retornado pela rota GET /clientes/{id}/dossie."""
+    cliente_id: int
     razao_social: str
-    cnpj: str
-    regiao: str
-    
-    # Métricas do Mês Fechado
-    mes_referencia: str # ex: "08/2026"
-    vendas_mes_fechado: float
-    pedidos_mes_fechado: int
-    ticket_medio: float
-    
-    # Relatórios Analíticos
-    itens_inclusos_ultimos_6m: List[ItemResumo]
-    itens_inativos: List[ItemResumo] # Itens comprados no passado, mas sem pedido há > 90/180 dias
-    recomendacoes: List[RecomendacaoItem] # Sugestões cruzadas por região ou perfil
+    cnpj_cpf: Optional[str] = None
+    micro_regiao: Optional[str] = None
+    grupo_economico: Optional[str] = None
+    mensagem: Optional[str] = None
+    resumo_fabricas: List[FabricaResumoOut] = []
+    sugestoes_reposicao: List[ReposicaoOut] = []
+    produtos_em_abandono: List[AbandonoOut] = []
+    performance_yoy: Optional[YoYOut] = None
+    sugestoes_expansao_mix: List[RecomendacaoProdutoOut] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
