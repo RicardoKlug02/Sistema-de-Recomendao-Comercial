@@ -2,6 +2,8 @@
 
 Sistema de suporte à decisão para representantes comerciais e vendedores internos dos segmentos de materiais de construção, elétrico e agropecuário. O projeto busca reunir indicadores de vendas e recomendações de produtos para apoiar o acompanhamento de clientes e a identificação de oportunidades comerciais.
 
+Comit
+
 ## Estado atual
 
 O frontend já permite navegar do login ao dashboard, baseado nos wireframes da pasta `docs`.
