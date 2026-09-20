@@ -2,28 +2,35 @@ import hashlib
 import hmac
 import os
 import re
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from cryptography.fernet import Fernet
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from src.backend.app.core.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 FERNET_CIPHER = Fernet(settings.SECRET_ENCRYPTION_KEY.encode("utf-8"))
 BLIND_INDEX_SALT = getattr(settings, "BLIND_INDEX_SALT", settings.SECRET_KEY)
 
 
 def gerar_hash_senha(senha: str) -> str:
-    # Trunca em 72 bytes para evitar erro de buffer overflow do Bcrypt
-    return pwd_context.hash(senha[:72])
+    """Gera hash bcrypt com salt automático."""
+    # Trunca em 72 bytes por especificação do algoritmo bcrypt
+    senha_bytes = senha.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(senha_bytes, salt).decode("utf-8")
 
 
 def verificar_senha(senha_plana: str, senha_hash: str) -> bool:
-    return pwd_context.verify(senha_plana[:72], senha_hash)
+    """Verifica se a senha em texto plano bate com o hash armazenado."""
+    try:
+        senha_bytes = senha_plana.encode("utf-8")[:72]
+        hash_bytes = senha_hash.encode("utf-8")
+        return bcrypt.checkpw(senha_bytes, hash_bytes)
+    except Exception:
+        return False
 
 
 def encriptar_dado(dado: Optional[str]) -> Optional[str]:
