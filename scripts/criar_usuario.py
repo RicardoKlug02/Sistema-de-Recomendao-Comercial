@@ -5,23 +5,30 @@ raiz = Path(__file__).resolve().parent.parent
 if str(raiz) not in sys.path:
     sys.path.insert(0, str(raiz))
 
-from sqlalchemy.orm import Session
-from src.backend.app.core.database import engine
-from src.backend.app.services.usuario_service import UsuarioService
+from src.backend.app.core.database import SessionLocal
+from src.backend.app.core.security import gerar_hash_senha
+from src.backend.app.models.usuario import Usuario
 
-with Session(engine) as session:
-    service = UsuarioService(db_session=session)
+EMAIL_ADMIN = "rick.nklug@gmail.com"
+NOME_ADMIN = "Ricardo Klug"
+SENHA_ADMIN = "Ricklegal55."  
 
-    email = "usuario@empresa.com"
-    senha = "senha123"
+with SessionLocal() as session:
+    usuario_existente = session.query(Usuario).filter(Usuario.email == EMAIL_ADMIN).first()
 
-    user = service.buscar_por_email(email)
-    if user:
-        print(f"Usuário {email} já existe (ID: {user.id}).")
+    if usuario_existente:
+        print(f"Usuário {EMAIL_ADMIN} já existe no banco (ID: {usuario_existente.id}) | Perfil: {usuario_existente.perfil} | Aprovado: {usuario_existente.aprovado}")
     else:
-        novo = service.criar_usuario(
-            nome="Ricardo Klug",
-            email="rick.nklug@gmail.com",
-            senha_plana="1234567",
+        novo_admin = Usuario(
+            nome=NOME_ADMIN,
+            email=EMAIL_ADMIN,
+            senha_hash=gerar_hash_senha(SENHA_ADMIN),
+            perfil="admin",
+            aprovado=True,
         )
-        print(f"Usuário criado com sucesso! ID: {novo.id} | Email: {novo.email}")
+        session.add(novo_admin)
+        session.commit()
+        session.refresh(novo_admin)
+
+        print(f"Administrador criado com sucesso!")
+        print(f"ID: {novo_admin.id} | Nome: {novo_admin.nome} | Email: {novo_admin.email} | Perfil: {novo_admin.perfil}")
