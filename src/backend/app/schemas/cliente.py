@@ -1,22 +1,47 @@
+import html
+import re
 from datetime import date
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict
+from typing import List, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class ClienteBase(BaseModel):
-    razao_social: str
-    nome_fantasia: Optional[str] = None
-    cnpj_cpf: Optional[str] = None
-    grupo_economico: Optional[str] = None
-    cidade: Optional[str] = None
-    estado: Optional[str] = None
+class SanitizedBaseModel(BaseModel):
+    """Modelo base com remoção de espaços e escape contra XSS/Injeção."""
+    model_config = ConfigDict(str_strip_whitespace=True, from_attributes=True)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def sanitizar_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return html.escape(value.strip())
+        return value
+
+
+class ClienteBuscaParams(SanitizedBaseModel):
+    """Validador estrito para parâmetros de pesquisa."""
+    termo: str = Field(..., min_length=1, max_length=100)
+    limite: int = Field(default=15, ge=1, le=100)
+
+    @field_validator("termo")
+    @classmethod
+    def validar_termo(cls, v: str) -> str:
+        # Bloqueia caracteres de controle suspeitos
+        if not re.match(r"^[\w\s\.\-\/\,]+$", v, re.UNICODE):
+            raise ValueError("O termo de busca contém caracteres inválidos.")
+        return v
+
+
+class ClienteBase(SanitizedBaseModel):
+    razao_social: str = Field(..., min_length=1, max_length=255)
+    nome_fantasia: Optional[str] = Field(None, max_length=255)
+    cnpj_cpf: Optional[str] = Field(None, max_length=20)
+    grupo_economico: Optional[str] = Field(None, max_length=150)
+    cidade: Optional[str] = Field(None, max_length=100)
+    estado: Optional[str] = Field(None, max_length=2)
 
 
 class ClienteOptionOut(ClienteBase):
-    """Schema enxuto para autocomplete e listagem de busca."""
     id: int
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class FabricaResumoOut(BaseModel):
@@ -67,7 +92,6 @@ class RecomendacaoProdutoOut(BaseModel):
 
 
 class ClienteDetalhesOut(BaseModel):
-    """Dossiê Analítico 360 retornado pela rota GET /clientes/{id}/dossie."""
     cliente_id: int
     razao_social: str
     cnpj_cpf: Optional[str] = None

@@ -112,6 +112,8 @@ class ExcelService:
         else:
             df["valor_total"] = 0.0
 
+        df = df.map(self.sanitizar_valor_planilha)
+
         return df
 
     def _limpar_excel_produtos(self, caminho_arquivo: str) -> pd.DataFrame:
@@ -307,3 +309,14 @@ class ExcelService:
                         )
 
         self.db.commit()
+        
+    @staticmethod
+    def sanitizar_valor_planilha(valor: object) -> object:
+        """Neutraliza tentativa de injeção de fórmulas de planilhas."""
+        if isinstance(valor, str):
+            val_limpo = valor.strip()
+            # Prefixos perigosos que iniciam comandos DDE ou fórmulas no Excel
+            if val_limpo.startswith(("=", "+", "-", "@", "\t", "\r")):
+                return f"'{val_limpo}"  # Aspas simples forçam o texto como literal puro
+            return val_limpo
+        return valor

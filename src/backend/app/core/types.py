@@ -1,7 +1,7 @@
 from typing import Any, Optional
 from sqlalchemy.types import String, TypeDecorator
 
-from src.backend.app.core.security import decrypt_data, encrypt_data
+from src.backend.app.core.security import encriptar_dado, decriptar_dado
 
 
 class EncryptedString(TypeDecorator):
