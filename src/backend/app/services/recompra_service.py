@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.backend.app.models.cliente import Cliente
@@ -116,9 +116,12 @@ class RecompraService:
     ) -> List[Dict[str, Any]]:
         """Mapeia os ciclos de recompra por produto para um cliente ou grupo econômico."""
         ref = ref_date or data_referencia or date.today()
-        grupo_alvo = self.obter_identificador_grupo(cliente_id)
-        if not grupo_alvo:
+        cliente = self.db.get(Cliente, cliente_id)
+        if cliente is None:
             return []
+        ids_clientes = [cliente_id]
+        if cliente.grupo_economico:
+            ids_clientes = [r.id for r in self.db.query(Cliente.id).filter(Cliente.grupo_economico == cliente.grupo_economico)]
 
         registros = (
             self.db.query(
@@ -131,12 +134,7 @@ class RecompraService:
             .join(Cliente, Cliente.id == Venda.cliente_id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
             .join(Produto, Produto.id == ItemVenda.produto_id)
-            .filter(
-                or_(
-                    Cliente.grupo_economico == grupo_alvo,
-                    Cliente.cnpj_cpf == grupo_alvo,
-                )
-            )
+            .filter(Cliente.id.in_(ids_clientes), Venda.data_venda <= ref)
             .order_by(Venda.data_venda.asc())
             .all()
         )

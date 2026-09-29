@@ -1,58 +1,76 @@
+import json
+import logging
 import os
-import shutil
 import tempfile
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-
-from src.backend.app.api.deps import get_db, get_usuario_admin
-from src.backend.app.models.usuario import Usuario
+from src.backend.app.api.deps import get_db, get_usuario_admin, get_usuario_atual
+from src.backend.app.core.config import settings
+from src.backend.app.models import Usuario, Importacao
 from src.backend.app.services.excel_service import ExcelService
 
 router = APIRouter(prefix="/cargas", tags=["Cargas e Importação"])
 
-EXTENSOES_PERMITIDAS = (".xlsx", ".xls")
+
+def _copiar(arquivo, destino):
+    extensao = os.path.splitext(arquivo.filename or "")[1].lower()
+    if extensao not in (".xls", ".xlsx"):
+        raise HTTPException(400, "Formato inválido. Envie planilhas Excel (.xlsx ou .xls).")
+    tamanho = 0
+    with open(destino, "wb") as saida:
+        while bloco := arquivo.file.read(1024 * 1024):
+            tamanho += len(bloco)
+            if tamanho > settings.MAX_UPLOAD_MB * 1024 * 1024:
+                raise HTTPException(413, f"Cada planilha deve ter no máximo {settings.MAX_UPLOAD_MB} MB.")
+            saida.write(bloco)
+    if tamanho == 0:
+        raise HTTPException(400, "Planilha vazia.")
 
 
-def _extensao(nome_arquivo: str) -> str:
-    return os.path.splitext(nome_arquivo or "")[1].lower()
+def _resultado(carga):
+    avisos = json.loads(carga.avisos_json)
+    return {"id": carga.id, "arquivo": carga.arquivo, "arquivo_itens": carga.arquivo_itens,
+            "usuario": carga.usuario, "data": carga.criado_em.date().isoformat(),
+            "processados": carga.processados, "adicionados": carga.adicionados,
+            "atualizados": carga.atualizados, "itens": carga.itens,
+            "pedidos_sem_itens": carga.pedidos_sem_itens, "avisos": avisos, "erros": 0}
 
 
-# "def" (e não "async def"): o processamento é síncrono e pesado (pandas + banco).
-# Em rota síncrona o FastAPI roda em uma thread separada e não trava o servidor.
-@router.post("/excel", status_code=status.HTTP_200_OK)
-def upload_planilhas_vendas(
-    arquivo_cabecalho: UploadFile = File(..., description="Planilha de pedidos/cabeçalho"),
-    arquivo_itens: UploadFile = File(..., description="Planilha de itens faturados por produto"),
-    db: Session = Depends(get_db),
-    _: Usuario = Depends(get_usuario_admin),  # Apenas admins podem subir cargas
-):
-    """Recebe as duas planilhas do ERP, processa em lote e atualiza a base."""
-    for arq in [arquivo_cabecalho, arquivo_itens]:
-        if _extensao(arq.filename) not in EXTENSOES_PERMITIDAS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Formato inválido para '{arq.filename}'. Envie planilhas Excel (.xlsx ou .xls).",
-            )
+@router.get("/historico")
+def historico(db: Session = Depends(get_db), _: Usuario = Depends(get_usuario_atual)):
+    return [_resultado(c) for c in db.query(Importacao).order_by(Importacao.id.desc()).limit(100).all()]
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Preserva a extensão original para o pandas escolher o leitor certo
-        # (.xlsx -> openpyxl, .xls -> xlrd).
-        path_cab = os.path.join(temp_dir, "cabecalho" + _extensao(arquivo_cabecalho.filename))
-        path_itens = os.path.join(temp_dir, "itens" + _extensao(arquivo_itens.filename))
 
-        with open(path_cab, "wb") as f_cab:
-            shutil.copyfileobj(arquivo_cabecalho.file, f_cab)
-
-        with open(path_itens, "wb") as f_itens:
-            shutil.copyfileobj(arquivo_itens.file, f_itens)
-
-        service = ExcelService(db_session=db)
-        resultado = service.importar_processo_completo(path_cab=path_cab, path_itens=path_itens)
-
-        if resultado.get("status") == "erro":
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=resultado.get("mensagem"),
-            )
-
-    return resultado
+@router.post("/excel")
+def upload_planilhas_vendas(arquivo_cabecalho: UploadFile = File(...), arquivo_itens: UploadFile = File(...),
+                            db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_admin)):
+    try:
+        with tempfile.TemporaryDirectory() as pasta:
+            cab = os.path.join(pasta, "cab" + os.path.splitext(arquivo_cabecalho.filename or "")[1].lower())
+            itens = os.path.join(pasta, "itens" + os.path.splitext(arquivo_itens.filename or "")[1].lower())
+            _copiar(arquivo_cabecalho, cab)
+            _copiar(arquivo_itens, itens)
+            service = ExcelService(db)
+            resultado = service._validar_e_salvar(service._limpar_excel_cabecalho(cab),
+                                                  service._limpar_excel_produtos(itens), commit=False)
+            carga = Importacao(arquivo=os.path.basename(arquivo_cabecalho.filename),
+                                arquivo_itens=os.path.basename(arquivo_itens.filename), usuario=usuario.email,
+                                avisos_json=json.dumps(resultado["avisos"], ensure_ascii=False),
+                                **{k: resultado[k] for k in ("processados", "adicionados", "atualizados", "itens", "pedidos_sem_itens")})
+            db.add(carga)
+            db.commit()
+            db.refresh(carga)
+            return {"status": "sucesso", "mensagem": resultado["mensagem"], **_resultado(carga)}
+    except HTTPException:
+        db.rollback()
+        raise
+    except (ValueError, KeyError, ImportError) as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc))
+    except Exception:
+        db.rollback()
+        logging.getLogger(__name__).exception("Falha ao importar planilhas.")
+        raise HTTPException(500, "Não foi possível concluir a importação. Nenhuma alteração desta carga foi salva.")
+    finally:
+        arquivo_cabecalho.file.close()
+        arquivo_itens.file.close()

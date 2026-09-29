@@ -22,84 +22,30 @@ class ClienteService:
         self.colaborativo = ColaborativoService(db_session=db_session)
 
     def buscar_por_termo(self, termo: str, limite: int = 15) -> List[Dict[str, Any]]:
-        """Busca híbrida: Blind Index para documento ou varredura decifrada para texto."""
-        termo_limpo = termo.strip()
-        apenas_digitos = re.sub(r"\D", "", termo_limpo)
-
-        # 1. Busca Exata por CNPJ/CPF via Blind Index O(1)
-        if len(apenas_digitos) >= 8:
-            hash_busca = gerar_blind_index(apenas_digitos)
-            cliente = (
-                self.db.query(Cliente)
-                .filter(Cliente.cnpj_hash == hash_busca)
-                .first()
-            )
-            if cliente:
-                return [
-                    {
-                        "id": cliente.id,
-                        "razao_social": cliente.razao_social,
-                        "nome_fantasia": cliente.nome_fantasia,
-                        "cnpj_cpf": cliente.cnpj_cpf,
-                        "grupo_economico": cliente.grupo_economico,
-                        "cidade": cliente.cidade,
-                        "estado": cliente.estado,
-                    }
-                ]
-
-        # 2. Busca por Grupo Econômico ou Localidade (Indexados no banco)
-        clientes_query = (
-            self.db.query(Cliente)
-            .filter(
-                or_(
-                    Cliente.grupo_economico.ilike(f"%{termo_limpo}%"),
-                    Cliente.cidade.ilike(f"%{termo_limpo}%"),
-                )
-            )
-            .limit(limite)
-            .all()
-        )
-        if clientes_query:
-            return [
-                {
-                    "id": c.id,
-                    "razao_social": c.razao_social,
-                    "nome_fantasia": c.nome_fantasia,
-                    "cnpj_cpf": c.cnpj_cpf,
-                    "grupo_economico": c.grupo_economico,
-                    "cidade": c.cidade,
-                    "estado": c.estado,
-                }
-                for c in clientes_query
-            ]
-
-        # 3. Varredura decifrada em memória (Fallback para Razão Social / Nome Fantasia)
-        candidatos = self.db.query(Cliente).limit(300).all()
-        termo_lower = termo_limpo.lower()
+        # A cifra é decifrada em lotes; não existe corte arbitrário da carteira.
+        import unicodedata
+        def normalizar(s):
+            return "".join(c for c in unicodedata.normalize("NFKD", s or "")
+                           if not unicodedata.combining(c)).casefold()
+        alvo = normalizar(termo.strip())
+        if not alvo:
+            return []
+        digitos = re.sub(r"\D", "", termo)
+        hash_alvo = gerar_blind_index(digitos) if len(digitos) in (11, 14) else None
         resultados = []
-
-        for c in candidatos:
-            razao = (c.razao_social or "").lower()
-            fantasia = (c.nome_fantasia or "").lower()
-            if termo_lower in razao or termo_lower in fantasia:
-                resultados.append(
-                    {
-                        "id": c.id,
-                        "razao_social": c.razao_social,
-                        "nome_fantasia": c.nome_fantasia,
-                        "cnpj_cpf": c.cnpj_cpf,
-                        "grupo_economico": c.grupo_economico,
-                        "cidade": c.cidade,
-                        "estado": c.estado,
-                    }
-                )
+        for c in self.db.query(Cliente).order_by(Cliente.id).yield_per(200):
+            if (hash_alvo and c.cnpj_hash == hash_alvo) or any(alvo in normalizar(v) for v in
+                (c.razao_social, c.nome_fantasia, c.grupo_economico, c.cidade)):
+                resultados.append({"id": c.id, "razao_social": c.razao_social,
+                    "nome_fantasia": c.nome_fantasia, "cnpj_cpf": c.cnpj_cpf,
+                    "grupo_economico": c.grupo_economico, "cidade": c.cidade, "estado": c.estado})
                 if len(resultados) >= limite:
                     break
-
         return resultados
 
+
     def obter_dossie_cliente(
-        self, cliente_id: int, ref_date: Optional[date] = None
+        self, cliente_id: int, ref_date: Optional[date] = None, agrupar_rede: bool = False
     ) -> Optional[Dict[str, Any]]:
         """Dossiê analítico 360: histórico, ciclo de fábrica, reposição, abandono e YoY."""
         ref = ref_date or date.today()
@@ -107,6 +53,10 @@ class ClienteService:
         cliente = self.db.query(Cliente).filter(Cliente.id == cliente_id).first()
         if not cliente:
             return None
+
+        cliente_ids = [cliente.id]
+        if agrupar_rede and cliente.grupo_economico:
+            cliente_ids = [c.id for c in self.db.query(Cliente.id).filter(Cliente.grupo_economico == cliente.grupo_economico)]
 
         registros = (
             self.db.query(
@@ -120,10 +70,10 @@ class ClienteService:
                 Produto.sku,
                 Produto.nome.label("produto_nome"),
             )
-            .join(ItemVenda, ItemVenda.venda_id == Venda.id)
-            .join(Produto, Produto.id == ItemVenda.produto_id)
+            .outerjoin(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .outerjoin(Produto, Produto.id == ItemVenda.produto_id)
             .join(Fabrica, Fabrica.id == Venda.fabrica_id)
-            .filter(Venda.cliente_id == cliente_id)
+            .filter(Venda.cliente_id.in_(cliente_ids), Venda.data_venda <= ref)
             .order_by(Venda.data_venda.asc())
             .all()
         )
@@ -134,6 +84,9 @@ class ClienteService:
             "cnpj_cpf": cliente.cnpj_cpf,
             "micro_regiao": cliente.micro_regiao,
             "grupo_economico": cliente.grupo_economico,
+            "clientes_agrupados": len(cliente_ids),
+            "valor_comprado": round(sum({r.venda_id: r.valor_total for r in registros}.values()), 2),
+            "pedidos_emitidos": len({r.venda_id for r in registros}),
         }
 
         if not registros:
@@ -147,14 +100,24 @@ class ClienteService:
                 "sugestoes_expansao_mix": [],
             }
 
+        recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10)
+        compradas = {r.fabrica_id for r in registros}
+        sugestoes_fabricas = {}
+        for sugestao in recomendacoes:
+            produto = self.db.get(Produto, sugestao["produto_id"])
+            if produto and produto.fabrica_id not in compradas:
+                fabrica = self.db.get(Fabrica, produto.fabrica_id)
+                sugestoes_fabricas[fabrica.id] = {"id": fabrica.id, "nome": fabrica.nome_fantasia,
+                    "motivo": "Produtos desta fábrica são comprados por redes de consumo semelhante."}
         return {
             **base_info,
+            "sugestoes_fabricas": list(sugestoes_fabricas.values()),
             "resumo_fabricas": self._analisar_fabricas(registros, ref),
             "sugestoes_reposicao": self._analisar_reposicao(registros, ref),
             "produtos_em_abandono": self._analisar_produtos_abandono(registros, ref),
             "performance_yoy": self._analisar_yoy(registros, ref),
             "sugestoes_expansao_mix": (
-                self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=4)
+                recomendacoes[:4]
                 if hasattr(self.colaborativo, "recomendar_produtos_cliente")
                 else []
             ),
@@ -168,7 +131,7 @@ class ClienteService:
 
         status_fabricas = []
         for fid, dados in fabricas_map.items():
-            datas = sorted(dados["pedidos"].values())
+            datas = sorted(set(dados["pedidos"].values()))
             ultima_compra = datas[-1]
             dias_sem_comprar = (ref - ultima_compra).days
 
@@ -217,13 +180,18 @@ class ClienteService:
     def _analisar_reposicao(self, registros: list, ref: date) -> List[Dict[str, Any]]:
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "compras": []})
         for r in registros:
+            if r.produto_id is None:
+                continue
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
             produtos_map[r.produto_id]["compras"].append((r.data_venda, r.quantidade))
 
         sugestoes = []
         for pid, dados in produtos_map.items():
-            compras = sorted(dados["compras"], key=lambda x: x[0])
+            por_data = defaultdict(int)
+            for data_compra, quantidade in dados["compras"]:
+                por_data[data_compra] += quantidade
+            compras = sorted(por_data.items())
             datas = [c[0] for c in compras]
             if len(datas) < 2:
                 continue
@@ -253,13 +221,15 @@ class ClienteService:
     def _analisar_produtos_abandono(self, registros: list, ref: date) -> List[Dict[str, Any]]:
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "datas": []})
         for r in registros:
+            if r.produto_id is None:
+                continue
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
             produtos_map[r.produto_id]["datas"].append(r.data_venda)
 
         abandonados = []
         for pid, dados in produtos_map.items():
-            datas = sorted(dados["datas"])
+            datas = sorted(set(dados["datas"]))
             if len(datas) < 3:
                 continue
 

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.backend.app.core.database import get_db
+from src.backend.app.api.deps import get_usuario_atual
 from src.backend.app.models.cliente_analises import (
     AlertaComercial,
     ClienteAnalytics,
@@ -16,7 +17,7 @@ from src.backend.app.schemas.analytics_schemas import (
     ResumoVendasGeralResponse,
 )
 
-router = APIRouter(prefix="/analytics", tags=["Analytics & Inteligência Comercial"])
+router = APIRouter(prefix="/analytics", tags=["Analytics & Inteligência Comercial"], dependencies=[Depends(get_usuario_atual)])
 
 
 @router.get("/resumo-vendas", response_model=List[ResumoVendasGeralResponse])

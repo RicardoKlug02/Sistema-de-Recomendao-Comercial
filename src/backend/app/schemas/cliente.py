@@ -13,7 +13,7 @@ class SanitizedBaseModel(BaseModel):
     @classmethod
     def sanitizar_strings(cls, value: object) -> object:
         if isinstance(value, str):
-            return html.escape(value.strip())
+            return value.strip()
         return value
 
 
@@ -89,6 +89,10 @@ class RecomendacaoProdutoOut(BaseModel):
     sku: str
     nome: str
     score: Optional[float] = None
+    afinidade_percentual: Optional[float] = None
+    classificacao: Optional[str] = None
+    volume_sugerido_unidades: Optional[int] = None
+    motivo: Optional[str] = None
 
 
 class ClienteDetalhesOut(BaseModel):
@@ -98,6 +102,10 @@ class ClienteDetalhesOut(BaseModel):
     micro_regiao: Optional[str] = None
     grupo_economico: Optional[str] = None
     mensagem: Optional[str] = None
+    valor_comprado: float = 0
+    pedidos_emitidos: int = 0
+    clientes_agrupados: int = 1
+    sugestoes_fabricas: List[dict] = []
     resumo_fabricas: List[FabricaResumoOut] = []
     sugestoes_reposicao: List[ReposicaoOut] = []
     produtos_em_abandono: List[AbandonoOut] = []

@@ -1,111 +1,64 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import Importacao from './Importacao'
+import Clientes from './Clientes'
+import Alertas from './Alertas'
+import Usuarios from './Usuarios'
 import MenuLateral from '../componentes/MenuLateral'
 import Cartao from '../componentes/Cartao'
 import CartaoIndicador from '../componentes/CartaoIndicador'
-import { dadosPainel, formatarMoeda } from '../servicos/dadosPainel'
+import useDados from '../servicos/useDados'
+import { formatarMoeda } from '../servicos/dadosPainel'
 import './PainelComercial.css'
+import './Operacao.css'
 
-// Compõe os resumos comerciais e controla navegação e detalhes das oportunidades.
 export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
-  const [secaoAtiva, definirSecaoAtiva] = useState('painel')
-  const [oportunidadeSelecionada, definirOportunidadeSelecionada] = useState(null)
-  const referenciaDialogo = useRef(null)
-  const maiorFaturamento = Math.max(...dadosPainel.faturamentoMensal.map(({ valor }) => valor))
-
-  useEffect(() => {
-    const importando = secaoAtiva === 'importacoes'
-    document.title = `${importando ? 'Importação' : 'Dashboard'} | Sistema de Recomendação Comercial`
-    const secao = document.getElementById(importando ? 'titulo-importacao' : secaoAtiva)
-    secao?.focus({ preventScroll: true })
-    secao?.scrollIntoView({ block: 'start' })
-  }, [secaoAtiva])
-
-  function navegarParaSecao(destino) {
-    definirSecaoAtiva(destino)
-  }
-
-  function abrirDetalhes(oportunidade) {
-    definirOportunidadeSelecionada(oportunidade)
-    referenciaDialogo.current.showModal()
-  }
-
-  return (
-    <div className="estrutura-painel">
-      <a className="atalho-conteudo" href={secaoAtiva === 'importacoes' ? '#titulo-importacao' : '#painel'}>Pular para o conteúdo</a>
-      <MenuLateral usuario={usuario} aoSair={aoSair} secaoAtiva={secaoAtiva} aoNavegar={navegarParaSecao} />
-      <Importacao usuario={usuario} ativa={secaoAtiva === 'importacoes'} />
-      <main className="conteudo-painel" hidden={secaoAtiva === 'importacoes'}>
-        <header className="cabecalho-painel">
-          <div><p className="sobretitulo">VISÃO COMERCIAL</p><h1 id="painel" ref={referenciaTitulo} tabIndex={-1}>Dashboard</h1><p>Visão geral do desempenho comercial</p></div>
-          <span className="aviso-demonstracao">Dados demonstrativos</span>
-        </header>
-        <div className="grade-indicadores">
-          {dadosPainel.indicadores.map((indicador) => <CartaoIndicador key={indicador.titulo} {...indicador} />)}
-        </div>
+  const [secao, definirSecao] = useState('painel')
+  const [mes, definirMes] = useState('')
+  const [vendedor, definirVendedor] = useState('')
+  const [clienteId, definirCliente] = useState(null)
+  const [versao, definirVersao] = useState(0)
+  const cadastroVendedores = useDados('/comercial/vendedores', versao)
+  const consulta = useDados(secao === 'painel' ? `/comercial/painel?${mes ? `mes=${mes}&` : ''}${vendedor ? `vendedor_id=${vendedor}` : ''}` : null, versao)
+  const dados = consulta.dados
+  const indicadores = dados?.indicadores
+  const maior = Math.max(1, ...(dados?.faturamento_mensal || []).map((m) => m.valor))
+  function abrirCliente(id) { definirCliente(id); definirSecao('clientes') }
+  function navegar(destino) { if (destino === 'clientes') definirCliente(null); definirSecao(destino) }
+  return <div className="estrutura-painel">
+    <MenuLateral usuario={usuario} aoSair={aoSair} secaoAtiva={secao} aoNavegar={navegar} />
+    {secao === 'importacoes' && <Importacao usuario={usuario} aoImportar={() => definirVersao((v) => v + 1)} />}
+    {secao === 'clientes' && <Clientes key={clienteId || 'lista'} inicial={clienteId} />}
+    {secao === 'alertas' && <Alertas vendedores={cadastroVendedores.dados || []} aoAbrirCliente={abrirCliente} />}
+    {secao === 'usuarios' && <Usuarios />}
+    {secao === 'painel' && <main className="conteudo-painel">
+      <header className="cabecalho-painel"><div><p className="sobretitulo">VISÃO COMERCIAL</p><h1 ref={referenciaTitulo} tabIndex={-1}>Dashboard</h1><p>Indicadores dos pedidos importados</p></div></header>
+      <div className="filtros-comerciais">
+        <label>Mês<input type="month" value={mes || dados?.mes || ''} onChange={(e) => definirMes(e.target.value)} /></label>
+        <label>Vendedor<select value={vendedor} onChange={(e) => definirVendedor(e.target.value)}><option value="">Todos os vendedores</option>{cadastroVendedores.dados?.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}</select></label>
+        <button className="botao-secundario" onClick={() => definirVersao((v) => v + 1)}>Atualizar</button>
+      </div>
+      {(consulta.erro || cadastroVendedores.erro) && <p className="erro-campo" role="alert">{consulta.erro || cadastroVendedores.erro}</p>}
+      {consulta.carregando && <p role="status">Carregando indicadores…</p>}
+      {indicadores && <>
+        <div className="grade-indicadores">{[
+          ['Venda total', formatarMoeda(indicadores.venda_total)], ['Pedidos emitidos', indicadores.pedidos_emitidos],
+          ['Clientes atendidos', indicadores.clientes_atendidos], ['Ticket médio', formatarMoeda(indicadores.ticket_medio)],
+          ['Clientes novos', indicadores.clientes_novos], ['Clientes reativados', indicadores.clientes_reativados],
+        ].map(([titulo, valor]) => <CartaoIndicador key={titulo} titulo={titulo} valor={valor} detalhe="Período selecionado" />)}</div>
+        {indicadores.pedidos_emitidos === 0 && <p>Nenhum pedido no período. Importe as planilhas ou escolha outro mês.</p>}
         <div className="grade-resumos">
-          <Cartao titulo="Faturamento mensal" descricao="Últimos 12 meses · ago/2025 a jul/2026">
-            <div className="grafico-colunas" role="list" aria-label="Faturamento por mês">
-              {dadosPainel.faturamentoMensal.map(({ mes, valor }) => (
-                <div key={mes} className="coluna-mensal" role="listitem" tabIndex={0} aria-label={`${mes}: ${formatarMoeda(valor)}`}>
-                  <span className="valor-coluna">{formatarMoeda(valor)}</span>
-                  <div className="trilho-coluna" aria-hidden="true"><span style={{ height: `${valor / maiorFaturamento * 100}%` }} /></div>
-                  <span aria-hidden="true">{mes}</span>
-                </div>
-              ))}
-            </div>
-          </Cartao>
-          <Cartao titulo="Vendas por categoria" descricao="Participação no total de vendas">
-            <ul className="lista-categorias">
-              {dadosPainel.categorias.map(({ nome, percentual }) => (
-                <li key={nome}><span>{nome}</span><meter min="0" max="100" value={percentual} aria-label={nome}>{percentual}%</meter><strong>{percentual}%</strong></li>
-              ))}
-            </ul>
-          </Cartao>
-          <Cartao id="clientes" titulo="Top 5 clientes por faturamento" descricao="Clientes com maior volume de negócios">
-            <ol className="lista-clientes">
-              {dadosPainel.clientes.map(({ nome, faturamento }) => <li key={nome}><span>{nome}</span><strong>{formatarMoeda(faturamento)}</strong></li>)}
-            </ol>
-          </Cartao>
-          <Cartao id="importacoes" titulo="Últimas importações" descricao="Histórico recente de arquivos">
-            <ul className="lista-importacoes">
-              {dadosPainel.importacoes.map(({ arquivo, data, situacao, registros }) => (
-                <li key={arquivo}>
-                  <div className="arquivo-importado"><strong>{arquivo}</strong><time dateTime={data}>{data.split('-').reverse().join('/')}</time></div>
-                  <div className="resumo-importacao"><span className={`etiqueta ${situacao === 'Com erros' ? 'etiqueta-alerta' : 'etiqueta-sucesso'}`}>{situacao}</span><span>{registros.toLocaleString('pt-BR')} registros</span></div>
-                </li>
-              ))}
-            </ul>
-          </Cartao>
+          <Cartao titulo="Faturamento mensal" descricao="12 meses até o período selecionado"><div className="grafico-colunas" role="list">
+            {dados.faturamento_mensal.map((m) => <div className="coluna-mensal" role="listitem" tabIndex={0} key={m.mes} aria-label={`${m.mes}: ${formatarMoeda(m.valor)}`}>
+              <span className="valor-coluna">{formatarMoeda(m.valor)}</span><div className="trilho-coluna" aria-hidden="true"><span style={{ height: `${m.valor / maior * 100}%` }} /></div><span>{m.mes.slice(5)}/{m.mes.slice(2, 4)}</span>
+            </div>)}</div></Cartao>
+          <Cartao titulo="Fábricas mais vendidas"><ol className="lista-clientes">{dados.fabricas.map((f) => <li key={f.id}><span>{f.nome}</span><strong>{formatarMoeda(f.valor)}</strong></li>)}</ol></Cartao>
+          <Cartao titulo="Produtos quentes" descricao="Ranking por valor de itens vendidos no período"><ol className="lista-clientes">{dados.produtos.map((p) => <li key={p.id}><span>{p.nome} · {p.quantidade} un.</span><strong>{formatarMoeda(p.valor)}</strong></li>)}</ol>{!dados.produtos.length && <p>Sem itens de produtos no período.</p>}</Cartao>
+          <Cartao titulo="Principais clientes"><ol className="lista-clientes">{dados.clientes.map((c) => <li key={c.id}><button className="botao-detalhes" onClick={() => abrirCliente(c.id)}>{c.nome}</button><strong>{formatarMoeda(c.valor)}</strong></li>)}</ol></Cartao>
+          <Cartao titulo="Fábricas quentes" descricao="Crescimento sobre o mês anterior"><ul>{dados.fabricas_quentes.map((f) => <li key={f.nome}>{f.nome}: +{f.crescimento}%</li>)}</ul>{!dados.fabricas_quentes.length && <p>Sem crescimento comparável no período.</p>}</Cartao>
+          <Cartao titulo="Acompanhamento comercial"><p>Consulte a central para contatos de segundo pedido, fábricas próximas da inatividade e produtos em risco.</p><button className="botao-secundario" onClick={() => definirSecao('alertas')}>Abrir central de alertas</button></Cartao>
         </div>
-        <Cartao titulo="Oportunidades recentes" descricao="Recomendações para suas próximas vendas" className="cartao-oportunidades">
-          <div className="rolagem-tabela" tabIndex={0} role="region" aria-label="Oportunidades recentes">
-            <table>
-              <thead><tr>{['Cliente', 'Produto / Linha', 'Relevância', 'Valor estimado', 'Ação'].map((titulo) => <th key={titulo} scope="col">{titulo}</th>)}</tr></thead>
-              <tbody>{dadosPainel.oportunidades.map((oportunidade) => (
-                <tr key={oportunidade.id}>
-                  <th scope="row">{oportunidade.cliente}</th><td>{oportunidade.produto}</td>
-                  <td><span className={`etiqueta relevancia-${oportunidade.relevancia.toLowerCase()}`}>{oportunidade.relevancia}</span></td>
-                  <td className="valor-monetario">{formatarMoeda(oportunidade.valor)}</td>
-                  <td><button className="botao-detalhes" onClick={() => abrirDetalhes(oportunidade)} aria-label={`Ver detalhes da oportunidade de ${oportunidade.cliente}`}>Ver detalhes <span aria-hidden="true">↗</span></button></td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        </Cartao>
-        <p className="nota-painel">Ambiente de demonstração · Valores ilustrativos, sem conexão com dados reais.</p>
-      </main>
-      <dialog ref={referenciaDialogo} className="dialogo-oportunidade" aria-labelledby="titulo-oportunidade">
-        <h2 id="titulo-oportunidade">Detalhes da oportunidade</h2>
-        {oportunidadeSelecionada && <dl>
-          <dt>Cliente</dt><dd>{oportunidadeSelecionada.cliente}</dd>
-          <dt>Produto / Linha</dt><dd>{oportunidadeSelecionada.produto}</dd>
-          <dt>Relevância</dt><dd>{oportunidadeSelecionada.relevancia}</dd>
-          <dt>Valor estimado</dt><dd>{formatarMoeda(oportunidadeSelecionada.valor)}</dd>
-        </dl>}
-        <p>Recomendação demonstrativa para análise comercial.</p>
-        <form method="dialog"><button className="botao-principal">Fechar</button></form>
-      </dialog>
-    </div>
-  )
+        <p className="nota-painel">{indicadores.pedidos_sem_itens} pedidos sem itens no período. Incluídos no faturamento; o ranking de produtos considera apenas itens informados. Reativação: retorno após 90 dias sem compra.</p>
+      </>}
+    </main>}
+  </div>
 }

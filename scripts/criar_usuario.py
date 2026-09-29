@@ -1,36 +1,26 @@
 import sys
 from pathlib import Path
-
-raiz = Path(__file__).resolve().parent.parent
-if str(raiz) not in sys.path:
-    sys.path.insert(0, str(raiz))
-
-from src.backend.app.core.database import SessionLocal
-from src.backend.app.core.security import gerar_hash_senha
-from src.backend.app.models.usuario import Usuario
-
-import os
 from getpass import getpass
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-EMAIL_ADMIN = os.getenv("ADMIN_EMAIL") or input("E-mail do admin: ")
-SENHA_ADMIN = os.getenv("ADMIN_SENHA") or getpass("Senha do admin: ")
 
-with SessionLocal() as session:
-    usuario_existente = session.query(Usuario).filter(Usuario.email == EMAIL_ADMIN).first()
+def main():
+    from src.backend.app.core.database import SessionLocal
+    from src.backend.app.core.security import gerar_hash_senha
+    from src.backend.app.models import Usuario
+    nome = input("Nome do administrador: ").strip()
+    email = input("E-mail do administrador: ").strip().lower()
+    senha = getpass("Senha (mínimo 8 caracteres): ")
+    if not nome or "@" not in email or len(senha) < 8:
+        raise ValueError("Informe nome, e-mail e senha válidos.")
+    with SessionLocal() as db:
+        if db.query(Usuario).filter_by(email=email).first():
+            raise ValueError("E-mail já cadastrado. Nenhuma alteração realizada.")
+        db.add(Usuario(nome=nome, email=email, senha_hash=gerar_hash_senha(senha),
+                       perfil="admin", ativo=True, aprovado=True))
+        db.commit()
+    print("Administrador criado.")
 
-    if usuario_existente:
-        print(f"Usuário {EMAIL_ADMIN} já existe no banco (ID: {usuario_existente.id}) | Perfil: {usuario_existente.perfil} | Aprovado: {usuario_existente.aprovado}")
-    else:
-        novo_admin = Usuario(
-            nome=NOME_ADMIN,
-            email=EMAIL_ADMIN,
-            senha_hash=gerar_hash_senha(SENHA_ADMIN),
-            perfil="admin",
-            aprovado=True,
-        )
-        session.add(novo_admin)
-        session.commit()
-        session.refresh(novo_admin)
 
-        print(f"Administrador criado com sucesso!")
-        print(f"ID: {novo_admin.id} | Nome: {novo_admin.nome} | Email: {novo_admin.email} | Perfil: {novo_admin.perfil}")
+if __name__ == "__main__":
+    main()

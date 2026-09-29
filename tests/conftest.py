@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 import pytest
@@ -6,6 +7,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
+from cryptography.fernet import Fernet
+
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["SECRET_KEY"] = "chave-exclusiva-dos-testes"
+os.environ["JWT_SECRET_KEY"] = "jwt-exclusivo-dos-testes"
+os.environ["SECRET_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
+os.environ["MAIL_ENABLED"] = "true"
+os.environ["MAIL_FROM"] = "teste@example.com"
+os.environ["SERVE_FRONTEND"] = "false"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:

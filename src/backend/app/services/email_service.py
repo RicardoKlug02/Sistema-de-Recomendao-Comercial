@@ -1,5 +1,6 @@
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from pydantic import EmailStr
+from html import escape
 
 from src.backend.app.core.config import settings
 
@@ -7,6 +8,9 @@ from src.backend.app.core.config import settings
 class EmailService:
 
     def __init__(self):
+        self.mail = None
+        if not settings.MAIL_ENABLED:
+            return
         self.conf = ConnectionConfig(
             MAIL_USERNAME=settings.MAIL_USERNAME,
             MAIL_PASSWORD=settings.MAIL_PASSWORD,
@@ -28,6 +32,10 @@ class EmailService:
         base_url: str = None,
     ):
         """Dispara e-mail com link assinado para aprovação de novo cadastro."""
+        if self.mail is None:
+            return False
+        nome_solicitante = escape(nome_solicitante)
+        email_solicitante = escape(email_solicitante)
         origem = base_url or getattr(settings, "BACKEND_URL", "http://localhost:8000")
         link_aprovacao = f"{origem}/api/v1/auth/aprovar?token={token_aprovacao}"
 
@@ -64,3 +72,4 @@ class EmailService:
         )
 
         await self.mail.send_message(mensagem)
+        return True

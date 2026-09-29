@@ -1,0 +1,13 @@
+.filtros-comerciais { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin-bottom: 22px; }
+.filtros-comerciais label, .formulario-carga label { display: grid; gap: 7px; font-size: 13px; }
+.filtros-comerciais input, .filtros-comerciais select { padding: 9px; border: 1px solid #ccd7cf; border-radius: 5px; background: white; min-height: 40px; max-width: 100%; }
+.formulario-carga { display: grid; gap: 18px; max-width: 680px; font-size: 13px; }
+.formulario-carga input { display: block; max-width: 100%; }
+.ficha-cliente { margin-top: 26px; }
+.ficha-cliente > .cartao { margin-bottom: 22px; }
+.ficha-cliente li, .conteudo-painel .cartao > p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.opcao-rede { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.menu-lateral nav { flex-wrap: wrap; }
+.rolagem-tabela p { padding: 12px; }
+.estrutura-painel .erro-campo { margin-bottom: 14px; }
+@media (max-width: 640px) { .filtros-comerciais label { flex: 1 1 180px; } .menu-lateral nav a { flex: 1 1 120px; } }

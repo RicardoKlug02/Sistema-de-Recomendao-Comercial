@@ -13,7 +13,7 @@ class Usuario(Base):
     perfil = Column(String(50), default="vendedor", nullable=False)  # 'admin', 'vendedor'
     ativo = Column(Boolean, default=True, nullable=False)
     aprovado = Column(Boolean, default=False, nullable=False)  # Liberado via link de aprovação
-    criado_em = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self):
         return f"<Usuario id={self.id} email='{self.email}' perfil='{self.perfil}'>"

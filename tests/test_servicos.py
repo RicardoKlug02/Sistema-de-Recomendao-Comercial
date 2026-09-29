@@ -1,3 +1,4 @@
+import pytest
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from src.backend.app.models.cliente import Cliente
@@ -18,7 +19,8 @@ def test_excel_service_normalizacao_e_conversoes(db_session):
     assert service.normalizar_sku("SKU-99") == "SKU-99"
     assert service._converter_valor_br("R$ 1.250,50") == 1250.50
     assert service._converter_valor_br("450,00") == 450.00
-    assert service._converter_valor_br(None) == 0.0
+    with pytest.raises(ValueError, match="obrigatório"):
+        service._converter_valor_br(None)
 
 
 def test_busca_hibrida_cliente_service(db_session):

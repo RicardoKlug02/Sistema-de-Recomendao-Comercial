@@ -1,322 +1,286 @@
-from datetime import datetime
+"""Importação transacional dos dois relatórios do ERP e de planilhas tabulares."""
 import hashlib
+import math
 import re
+import unicodedata
+from pathlib import Path
 from typing import Any, Dict, Optional
 import pandas as pd
 from sqlalchemy.orm import Session
-
 from src.backend.app.core.security import gerar_blind_index
-from src.backend.app.models.cliente import Cliente
-from src.backend.app.models.fabrica import Fabrica
-from src.backend.app.models.item_venda import ItemVenda
-from src.backend.app.models.produto import Produto
-from src.backend.app.models.venda import Venda
-from src.backend.app.models.vendedor import Vendedor
+from src.backend.app.models import Cliente, Fabrica, ItemVenda, Produto, Venda, Vendedor
+
+
+def normalizar_coluna(valor):
+    texto = unicodedata.normalize("NFKD", str(valor))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "_", texto.lower()).strip("_")
+
+
+def texto(valor):
+    return "" if pd.isna(valor) else str(valor).strip()
+
+
+def identificador(valor):
+    return re.sub(r"^([0-9]+)\.0+$", r"\1", texto(valor))
 
 
 class ExcelService:
-
     def __init__(self, db_session: Session):
         self.db = db_session
-        self.salt = "TCC_SECRET_2026"
 
     @staticmethod
     def normalizar_sku(sku_raw: Optional[str]) -> str:
-        """Remove variações de embalagem unitária ('U'/'u') ao final do código."""
-        if not sku_raw:
-            return ""
-        sku_limpo = str(sku_raw).strip()
-        return re.sub(r"(?<=\d)[uU]$", "", sku_limpo).strip()
+        return re.sub(r"(?<=\d)[uU]$", "", identificador(sku_raw))
 
     def _anonimizar(self, valor: Any) -> str:
-        if not valor or pd.isna(valor) or str(valor).strip().lower() in ["nan", "none", ""]:
-            return "ANON_DESCONHECIDO"
-        texto = f"{str(valor).strip()}_{self.salt}"
-        return hashlib.sha256(texto.encode("utf-8")).hexdigest()[:14].upper()
+        # Compatibilidade com scripts antigos; a carga operacional conserva os nomes.
+        return hashlib.sha256(texto(valor).encode()).hexdigest()[:14].upper()
 
     def _converter_valor_br(self, valor: Any) -> float:
-        if pd.isna(valor) or valor is None:
-            return 0.0
-        if isinstance(valor, (int, float)):
-            return float(valor)
-        val_str = str(valor).replace("R$", "").strip()
-        if "," in val_str:
-            val_str = val_str.replace(".", "").replace(",", ".")
+        if pd.isna(valor) or valor is None or texto(valor) == "":
+            raise ValueError("Valor numérico obrigatório não preenchido na planilha.")
+        numero = texto(valor).replace("R$", "").replace("\u00a0", "").replace(" ", "")
+        if "," in numero:
+            numero = numero.replace(".", "").replace(",", ".")
         try:
-            return float(val_str)
+            resultado = float(numero)
         except ValueError:
-            return 0.0
+            raise ValueError("Valor numérico inválido na planilha.")
+        if not math.isfinite(resultado):
+            raise ValueError("Valor não finito na planilha.")
+        return resultado
+
+    @staticmethod
+    def _mapear_colunas(df):
+        aliases = {
+            "pedido": ("pedido", "numero_do_pedido", "numero_pedido", "n_pedido"),
+            "data": ("data", "data_emissao", "data_de_emissao", "data_do_pedido", "data_pedido"),
+            "fabrica": ("fabrica", "representada", "industria", "fabricante"),
+            "cliente": ("razao_social", "cliente", "nome_do_cliente"),
+            "nome_fantasia": ("nome_fantasia", "fantasia"),
+            "cnpj_cpf": ("cnpj_cpf", "cnpj", "cpf", "cpf_cnpj"),
+            "vendedor": ("vendedor", "vendedor_a", "representante", "nome_vendedor"),
+            "rede": ("rede", "rede_de_clientes", "grupo", "grupo_economico"),
+            "cidade": ("cidade", "municipio"), "estado": ("estado", "uf"),
+            "cep": ("cep",), "valor_total": ("valor_total", "total", "valor", "valor_do_pedido", "total_pedido", "total_em_produtos"),
+            "sku": ("sku", "codigo", "codigo_produto", "codigo_do_produto", "cod_produto"),
+            "nome_produto": ("produto", "nome_produto", "descricao", "descricao_produto"),
+            "quantidade": ("quantidade", "qtd", "qtde"), "preco_unitario": ("preco_unitario", "preco", "valor_unitario"),
+        }
+        df.columns = [normalizar_coluna(c) for c in df.columns]
+        rename = {}
+        for destino, nomes in aliases.items():
+            origem = next((c for c in nomes if c in df.columns), None)
+            if origem:
+                rename[origem] = destino
+        return df.rename(columns=rename).loc[:, lambda x: ~x.columns.duplicated()]
+
+    def _ler_tabela(self, arquivo):
+        bruto = pd.read_excel(arquivo, header=None, dtype=str)
+        for i, row in bruto.head(40).iterrows():
+            cols = {normalizar_coluna(v) for v in row.dropna()}
+            if cols.intersection({"pedido", "numero_pedido", "numero_do_pedido"}) and len(cols) >= 3:
+                df = bruto.iloc[i + 1:].copy()
+                df.columns = bruto.iloc[i].tolist()
+                return self._mapear_colunas(df.dropna(how="all"))
+        raise ValueError("Cabeçalho não encontrado. Use colunas Pedido, Data, Cliente, CNPJ/CPF, Fábrica e Valor Total.")
+
+    def _limpar_excel_cabecalho(self, caminho_arquivo):
+        df = self._ler_tabela(caminho_arquivo)
+        obrigatorias = {"pedido", "data", "fabrica", "cnpj_cpf", "valor_total"}
+        faltantes = obrigatorias - set(df.columns)
+        if faltantes:
+            raise ValueError("Colunas obrigatórias ausentes: " + ", ".join(sorted(faltantes)))
+        if "cliente" not in df:
+            if "nome_fantasia" not in df:
+                raise ValueError("Informe a coluna Cliente ou Razão Social.")
+            df["cliente"] = df["nome_fantasia"]
+        df = df.dropna(subset=["pedido"]).copy()
+        df["pedido"] = df["pedido"].map(identificador)
+        df = df[df["pedido"] != ""]
+        if df.empty:
+            raise ValueError("A planilha de pedidos está vazia.")
+        df["valor_total"] = df["valor_total"].map(self._converter_valor_br)
+        return df.reset_index(drop=True)
+
+    def _limpar_excel_produtos(self, caminho_arquivo):
+        bruto = pd.read_excel(caminho_arquivo, header=None, dtype=str)
+        colunas = ["sku", "nome_produto", "pedido", "preco_unitario", "quantidade"]
+        if bruto.empty:
+            return pd.DataFrame(columns=colunas)
+        if not bruto[0].fillna("").str.strip().str.startswith("Produto:").any():
+            df = self._ler_tabela(caminho_arquivo)
+            faltantes = set(colunas) - set(df.columns)
+            if faltantes:
+                raise ValueError("Colunas de itens ausentes: " + ", ".join(sorted(faltantes)))
+            df = df.dropna(subset=["pedido", "sku"]).copy()
+            df["pedido"] = df["pedido"].map(identificador)
+            df["sku"] = df["sku"].map(self.normalizar_sku)
+            for c in ("preco_unitario", "quantidade"):
+                df[c] = df[c].map(self._converter_valor_br)
+            return df
+        itens, sku, nome = [], None, None
+        for _, row in bruto.iterrows():
+            inicio = texto(row.iloc[0])
+            if inicio.startswith("Produto:"):
+                descricao = inicio.removeprefix("Produto:").strip()
+                partes = re.split(r"\s+-\s+", descricao, maxsplit=1)
+                if len(partes) != 2:
+                    partes = re.split(r"\s*-\s*", descricao, maxsplit=1)
+                sku = self.normalizar_sku(partes[0])
+                nome = partes[1] if len(partes) == 2 else descricao
+                continue
+            if len(row) < 6 or inicio.startswith(("Data", "Filtros", "Relatório", "Total")):
+                continue
+            # O ERP inclui totalizadores com contagem na coluna Pedido.
+            # Não são itens: não têm data, cliente, criador nem preço unitário.
+            if not inicio and all(pd.isna(row.iloc[i]) for i in (2, 3, 4)):
+                continue
+            pedido = identificador(row.iloc[1])
+            if not sku or not re.fullmatch(r"[0-9]+", pedido):
+                continue
+            itens.append({"sku": sku, "nome_produto": nome, "pedido": pedido,
+                          "preco_unitario": self._converter_valor_br(row.iloc[4]),
+                          "quantidade": self._converter_valor_br(row.iloc[5])})
+        return pd.DataFrame(itens, columns=colunas)
 
     def importar_processo_completo(self, path_cab: str, path_itens: str) -> Dict[str, Any]:
-        """Orquestra o parsing das planilhas de cabeçalho e itens faturados."""
         try:
-            df_produtos = self._limpar_excel_produtos(path_itens)
-            df_cabecalho = self._limpar_excel_cabecalho(path_cab)
-
-            self._validar_e_salvar(df_cabecalho, df_produtos)
-
-            return {
-                "status": "sucesso",
-                "mensagem": f"Importação concluída: {len(df_cabecalho)} pedidos e {len(df_produtos)} itens processados.",
-            }
-        except Exception as e:
+            resultado = self._validar_e_salvar(
+                self._limpar_excel_cabecalho(path_cab), self._limpar_excel_produtos(path_itens), commit=False)
+            self.db.commit()
+            return {"status": "sucesso", **resultado}
+        except ValueError as exc:
             self.db.rollback()
-            return {"status": "erro", "mensagem": str(e)}
+            return {"status": "erro", "mensagem": str(exc), "tipo": "validacao"}
+        except Exception:
+            self.db.rollback()
+            raise
 
-    def _limpar_excel_cabecalho(self, caminho_arquivo: str) -> pd.DataFrame:
-        df = pd.read_excel(caminho_arquivo, skiprows=10, dtype=str)
-        df = df.dropna(how="all", axis=1)
-        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
-
-        novo_map = {}
-        ja_mapeados = set()
-
-        for col in df.columns:
-            if "pedido" in col and "pedido" not in ja_mapeados:
-                novo_map[col] = "pedido"
-                ja_mapeados.add("pedido")
-            elif ("cnpj" in col or "cpf" in col) and "cnpj_cpf" not in ja_mapeados:
-                novo_map[col] = "cnpj_cpf"
-                ja_mapeados.add("cnpj_cpf")
-            elif "vendedor" in col and "vendedor" not in ja_mapeados:
-                novo_map[col] = "vendedor"
-                ja_mapeados.add("vendedor")
-            elif "fabrica" in col and "fabrica" not in ja_mapeados:
-                novo_map[col] = "fabrica"
-                ja_mapeados.add("fabrica")
-            elif "total" in col and "valor_total" not in ja_mapeados:
-                novo_map[col] = "valor_total"
-                ja_mapeados.add("valor_total")
-            elif "data" in col and "data" not in ja_mapeados:
-                novo_map[col] = "data"
-                ja_mapeados.add("data")
-            elif any(termo in col for termo in ["cliente", "razao", "nome"]) and "cliente" not in ja_mapeados:
-                novo_map[col] = "cliente"
-                ja_mapeados.add("cliente")
-            elif any(termo in col for termo in ["rede", "grupo"]) and "rede" not in ja_mapeados:
-                novo_map[col] = "rede"
-                ja_mapeados.add("rede")
-
-        df = df.rename(columns=novo_map)
-        df = df.loc[:, ~df.columns.duplicated()]
-
-        if "pedido" not in df.columns:
-            raise ValueError(f"Coluna de pedido não identificada em {caminho_arquivo}")
-
-        df = df.dropna(subset=["pedido"])
-        df["pedido"] = df["pedido"].astype(str).str.strip()
-        df = df[(df["pedido"] != "") & (df["pedido"] != "nan")]
-
-        if "valor_total" in df.columns:
-            df["valor_total"] = df["valor_total"].apply(self._converter_valor_br)
-        else:
-            df["valor_total"] = 0.0
-
-        df = df.map(self.sanitizar_valor_planilha)
-
-        return df
-
-    def _limpar_excel_produtos(self, caminho_arquivo: str) -> pd.DataFrame:
-        df = pd.read_excel(caminho_arquivo, header=None, dtype=str)
-        itens = []
-        sku_atual = None
-        nome_produto_atual = None
-
-        for _, row in df.iterrows():
-            col_0 = str(row[0]).strip() if pd.notna(row[0]) else ""
-
-            if col_0.startswith("Produto:"):
-                texto = col_0.replace("Produto:", "").strip()
-                match = re.match(r"^([^-]+)\s*-\s*(.+)$", texto)
-                if match:
-                    sku_atual = self.normalizar_sku(match.group(1).strip())
-                    nome_produto_atual = match.group(2).strip()
-                else:
-                    sku_atual = self.normalizar_sku(texto)
-                    nome_produto_atual = texto
-                continue
-
-            if any(col_0.startswith(p) for p in ["Data", "Filtros", "Relatório", "Total"]):
-                continue
-
-            pedido_val = row[1]
-            if pd.isna(pedido_val) or str(pedido_val).strip() == "":
-                continue
-
+    def _validar_e_salvar(self, df_cab, df_prod, commit=True):
+        if df_cab.empty:
+            raise ValueError("A planilha de pedidos está vazia.")
+        # Valida toda a carga antes de qualquer substituição dos itens.
+        chaves = set()
+        pedidos_fabricas = {}
+        cabecalhos = []
+        for linha, row in df_cab.iterrows():
+            pedido = identificador(row["pedido"])
+            fabrica = texto(row.get("fabrica"))
+            doc = re.sub(r"\D", "", texto(row.get("cnpj_cpf")))
+            if not pedido or not fabrica or len(doc) not in (11, 14):
+                raise ValueError(f"Pedido na linha {linha + 1}: informe número, fábrica e CNPJ/CPF com 11 ou 14 dígitos.")
+            chave = (fabrica.casefold(), pedido)
+            if chave in chaves:
+                raise ValueError(f"Pedido {pedido} duplicado na mesma fábrica.")
+            chaves.add(chave)
+            pedidos_fabricas.setdefault(pedido, set()).add(fabrica.casefold())
             try:
-                int(str(pedido_val).strip())
-            except ValueError:
+                data = pd.to_datetime(row.get("data"), dayfirst=True, errors="raise")
+                if pd.isna(data):
+                    raise ValueError()
+                data = data.date()
+            except (ValueError, TypeError):
+                raise ValueError(f"Pedido {pedido}: data inválida.")
+            valor = self._converter_valor_br(row.get("valor_total"))
+            if valor < 0:
+                raise ValueError(f"Pedido {pedido}: valor total negativo.")
+            cabecalhos.append((row, pedido, fabrica, doc, data, valor))
+        grupos, ignorados = {}, 0
+        for _, item in df_prod.iterrows():
+            pedido = identificador(item["pedido"])
+            fabricas = pedidos_fabricas.get(pedido)
+            if not fabricas:
+                ignorados += 1
                 continue
-
-            preco = self._converter_valor_br(row[4])
-            qtd = int(self._converter_valor_br(row[5]))
-            subtotal = (
-                self._converter_valor_br(row[6])
-                if len(row) > 6
-                else round(preco * qtd, 2)
-            )
-
-            itens.append({
-                "sku": sku_atual,
-                "nome_produto": nome_produto_atual,
-                "pedido": str(pedido_val).strip(),
-                "preco_unitario": preco,
-                "quantidade": qtd,
-                "subtotal": subtotal,
-            })
-
-        return pd.DataFrame(itens)
-
-    def _validar_e_salvar(self, df_cab: pd.DataFrame, df_prod: pd.DataFrame):
-        # 1. Fábricas
-        fabricas_cache = {f.nome_fantasia: f.id for f in self.db.query(Fabrica.nome_fantasia, Fabrica.id).all()}
-        fabrica_padrao = self.db.query(Fabrica).first()
-        if not fabrica_padrao:
-            fabrica_padrao = Fabrica(nome_fantasia="Fábrica Matriz")
-            self.db.add(fabrica_padrao)
-            self.db.flush()
-            fabricas_cache[fabrica_padrao.nome_fantasia] = fabrica_padrao.id
-
-        # 2. Clientes (Cache por Blind Index)
-        clientes_cache = {
-            c.cnpj_hash: c.id
-            for c in self.db.query(Cliente.cnpj_hash, Cliente.id).filter(Cliente.cnpj_hash.isnot(None)).all()
-        }
-
-        for _, row in df_cab.iterrows():
-            doc_real = str(row.get("cnpj_cpf", "")).strip()
-            if not doc_real or doc_real.lower() == "nan":
-                continue
-
-            doc_hash = gerar_blind_index(doc_real)
-            doc_anon = f"CLI_{self._anonimizar(doc_real)}"
-
-            nome_real = str(row.get("cliente", "")).strip()
-            if not nome_real or nome_real.lower() == "nan":
-                nome_real = f"Cliente {doc_anon[:10]}"
-
-            rede_raw = str(row.get("rede", "")).strip()
-            if rede_raw and rede_raw.lower() != "nan":
-                rede_anon = f"GRUPO_{self._anonimizar(rede_raw)[:10]}"
-            else:
-                rede_anon = doc_anon
-
-            if doc_hash not in clientes_cache:
-                cliente = Cliente(
-                    cnpj_cpf=doc_anon,
-                    cnpj_hash=doc_hash,
-                    razao_social=nome_real,      # EncryptedString cifra em repouso
-                    nome_fantasia=nome_real,     # EncryptedString cifra em repouso
-                    grupo_economico=rede_anon,
-                )
+            fabrica_item = texto(item.get("fabrica")).casefold()
+            if len(fabricas) > 1 and not fabrica_item:
+                raise ValueError(f"Pedido {pedido}: número repetido entre fábricas. Informe a fábrica na planilha de itens.")
+            fabrica_item = fabrica_item or next(iter(fabricas))
+            if fabrica_item not in fabricas:
+                raise ValueError(f"Pedido {pedido}: fábrica do item difere do cabeçalho.")
+            qtd = self._converter_valor_br(item["quantidade"])
+            preco = self._converter_valor_br(item["preco_unitario"])
+            sku = self.normalizar_sku(item["sku"])
+            if not sku or qtd <= 0 or qtd != int(qtd) or preco < 0:
+                raise ValueError(f"Pedido {pedido}: SKU, quantidade inteira positiva ou preço inválido.")
+            grupos.setdefault((fabrica_item, pedido), []).append((sku, texto(item["nome_produto"]) or sku, int(qtd), preco))
+        if self.db.bind.dialect.name == "postgresql":
+            from sqlalchemy import text
+            self.db.execute(text("SELECT pg_advisory_xact_lock(20260929)"))
+        fabricas_cache = {f.nome_fantasia.casefold(): f for f in self.db.query(Fabrica).all()}
+        vendedores = {v.nome.casefold(): v for v in self.db.query(Vendedor).all()}
+        clientes = {c.cnpj_hash: c for c in self.db.query(Cliente).all() if c.cnpj_hash}
+        produtos = {(p.fabrica_id, p.sku): p for p in self.db.query(Produto).all()}
+        vendas = {(v.fabrica_id, v.numero_pedido): v for v in self.db.query(Venda).filter(Venda.numero_pedido.in_(pedidos_fabricas)).all()}
+        adicionados = atualizados = itens_salvos = sem_itens = 0
+        for row, pedido, nome_fabrica, doc, data, valor in cabecalhos:
+            fabrica = fabricas_cache.get(nome_fabrica.casefold())
+            if fabrica is None:
+                fabrica = Fabrica(nome_fantasia=nome_fabrica)
+                self.db.add(fabrica)
+                self.db.flush()
+                fabricas_cache[nome_fabrica.casefold()] = fabrica
+            doc_hash = gerar_blind_index(doc)
+            cliente = clientes.get(doc_hash)
+            if cliente is None:
+                cliente = Cliente(cnpj_cpf=doc, cnpj_hash=doc_hash, razao_social=texto(row.get("cliente")) or doc)
                 self.db.add(cliente)
                 self.db.flush()
-                clientes_cache[doc_hash] = cliente.id
-            else:
-                c_id = clientes_cache[doc_hash]
-                cliente_existente = self.db.query(Cliente).filter(Cliente.id == c_id).first()
-                if cliente_existente and not cliente_existente.grupo_economico:
-                    cliente_existente.grupo_economico = rede_anon
-
-        # 3. Vendedores
-        vendedores_cache = {v.nome: v.id for v in self.db.query(Vendedor.nome, Vendedor.id).all()}
-        for _, row in df_cab.iterrows():
-            vend_real = str(row.get("vendedor", "")).strip()
-            if not vend_real or vend_real == "nan":
-                continue
-
-            vend_anon = f"Vendedor_{self._anonimizar(vend_real)[:8]}"
-            if vend_anon not in vendedores_cache:
-                vendedor = Vendedor(nome=vend_anon)
+                clientes[doc_hash] = cliente
+            cliente.razao_social = texto(row.get("cliente")) or cliente.razao_social
+            for campo, origem in (("nome_fantasia", "nome_fantasia"), ("cidade", "cidade"),
+                                  ("estado", "estado"), ("cep", "cep"), ("grupo_economico", "rede")):
+                if texto(row.get(origem)):
+                    setattr(cliente, campo, texto(row.get(origem)))
+            vend_nome = texto(row.get("vendedor"))
+            vendedor = vendedores.get(vend_nome.casefold())
+            if vend_nome and vendedor is None:
+                vendedor = Vendedor(nome=vend_nome)
                 self.db.add(vendedor)
                 self.db.flush()
-                vendedores_cache[vend_anon] = vendedor.id
-
-        # 4. Produtos
-        produtos_cache = {p.sku: p.id for p in self.db.query(Produto.sku, Produto.id).all()}
-        for _, row in df_prod[["sku", "nome_produto"]].drop_duplicates().iterrows():
-            sku = self.normalizar_sku(row["sku"])
-            if sku and sku not in produtos_cache:
-                produto = Produto(
-                    sku=sku,
-                    nome=str(row["nome_produto"]),
-                    fabrica_id=fabrica_padrao.id,
-                )
-                self.db.add(produto)
-                self.db.flush()
-                produtos_cache[sku] = produto.id
-
-        # 5. Persistência de Vendas e Itens
-        pedidos_cab = set(df_cab["pedido"].tolist())
-        vendas_existentes = {
-            v.numero_pedido: v
-            for v in self.db.query(Venda).filter(Venda.numero_pedido.in_(pedidos_cab)).all()
-        }
-
-        prod_agrupados = df_prod.groupby("pedido")
-
-        for _, row_cab in df_cab.iterrows():
-            num_pedido = row_cab["pedido"]
-            doc_real = str(row_cab.get("cnpj_cpf", "")).strip()
-            doc_hash = gerar_blind_index(doc_real)
-            
-            vend_real = str(row_cab.get("vendedor", "")).strip()
-            vend_anon = f"Vendedor_{self._anonimizar(vend_real)[:8]}" if vend_real and vend_real != "nan" else None
-
-            cliente_id = clientes_cache.get(doc_hash)
-            vendedor_id = vendedores_cache.get(vend_anon)
-            valor_total = row_cab["valor_total"]
-
-            # Tratamento resiliente de datas (Excel / String)
-            data_raw = row_cab.get("data")
-            try:
-                data_venda = pd.to_datetime(data_raw, dayfirst=True).date()
-            except Exception:
-                data_venda = datetime.today().date()
-
-            venda = vendas_existentes.get(num_pedido)
-            if venda:
-                venda.cliente_id = cliente_id
-                venda.vendedor_id = vendedor_id
-                venda.data_venda = data_venda
-                venda.valor_total = valor_total
-                self.db.query(ItemVenda).filter(ItemVenda.venda_id == venda.id).delete()
-            else:
-                venda = Venda(
-                    numero_pedido=num_pedido,
-                    cliente_id=cliente_id,
-                    vendedor_id=vendedor_id,
-                    fabrica_id=fabrica_padrao.id,
-                    data_venda=data_venda,
-                    valor_total=valor_total,
-                )
+                vendedores[vend_nome.casefold()] = vendedor
+            venda = vendas.get((fabrica.id, pedido))
+            if venda is None:
+                venda = Venda(numero_pedido=pedido, fabrica_id=fabrica.id)
                 self.db.add(venda)
-                self.db.flush()
-                vendas_existentes[num_pedido] = venda
+                vendas[(fabrica.id, pedido)] = venda
+                adicionados += 1
+            else:
+                atualizados += 1
+            venda.cliente_id, venda.data_venda, venda.valor_total = cliente.id, data, valor
+            venda.vendedor_id = vendedor.id if vendedor else None
+            self.db.flush()
+            itens = grupos.get((nome_fabrica.casefold(), pedido), [])
+            if not itens:
+                sem_itens += 1
+                # Pedido direto de fábrica é válido; reenvio sem itens conserva itens anteriores.
+                continue
+            self.db.query(ItemVenda).filter_by(venda_id=venda.id).delete(synchronize_session=False)
+            for sku, nome, quantidade, preco in itens:
+                produto = produtos.get((fabrica.id, sku))
+                if produto is None:
+                    produto = Produto(sku=sku, nome=nome, fabrica_id=fabrica.id)
+                    self.db.add(produto)
+                    self.db.flush()
+                    produtos[(fabrica.id, sku)] = produto
+                self.db.add(ItemVenda(venda_id=venda.id, produto_id=produto.id,
+                                      quantidade=quantidade, preco_unitario=preco))
+                itens_salvos += 1
+        avisos = []
+        if ignorados:
+            avisos.append(f"{ignorados} linhas de itens sem cabeçalho correspondente não foram importadas. Confira os filtros dos relatórios.")
+        if sem_itens:
+            avisos.append(f"{sem_itens} pedidos sem itens na carga: mantidos no faturamento e fora das análises de mix.")
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+        return {"mensagem": "Importação concluída.", "processados": len(cabecalhos),
+                "adicionados": adicionados, "atualizados": atualizados, "itens": itens_salvos,
+                "pedidos_sem_itens": sem_itens, "itens_ignorados": ignorados, "avisos": avisos}
 
-            if num_pedido in prod_agrupados.groups:
-                for _, item_row in prod_agrupados.get_group(num_pedido).iterrows():
-                    sku_item = self.normalizar_sku(item_row["sku"])
-                    prod_id = produtos_cache.get(sku_item)
-                    if prod_id:
-                        self.db.add(
-                            ItemVenda(
-                                venda_id=venda.id,
-                                produto_id=prod_id,
-                                quantidade=item_row["quantidade"],
-                                preco_unitario=item_row["preco_unitario"],
-                            )
-                        )
-
-        self.db.commit()
-        
     @staticmethod
-    def sanitizar_valor_planilha(valor: object) -> object:
-        """Neutraliza tentativa de injeção de fórmulas de planilhas."""
-        if isinstance(valor, str):
-            val_limpo = valor.strip()
-            # Prefixos perigosos que iniciam comandos DDE ou fórmulas no Excel
-            if val_limpo.startswith(("=", "+", "-", "@", "\t", "\r")):
-                return f"'{val_limpo}"  # Aspas simples forçam o texto como literal puro
-            return val_limpo
-        return valor
+    def sanitizar_valor_planilha(valor):
+        return texto(valor) if isinstance(valor, str) else valor

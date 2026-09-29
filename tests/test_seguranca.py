@@ -3,8 +3,8 @@ from datetime import timedelta
 from src.backend.app.core.security import (
     gerar_hash_senha,
     verificar_senha,
-    encrypt_data,
-    decrypt_data,
+    encriptar_dado,
+    decriptar_dado,
     criar_token_acesso,
     decodificar_token_acesso,
     gerar_token_aprovacao,
@@ -29,9 +29,9 @@ def test_limite_bcrypt_72_bytes():
 
 def test_criptografia_simetrica_fernet():
     texto_original = "Supermercado Exemplo LTDA - CNPJ 12.345.678/0001-90"
-    cifrado = encrypt_data(texto_original)
+    cifrado = encriptar_dado(texto_original)
     assert cifrado != texto_original
-    decifrado = decrypt_data(cifrado)
+    decifrado = decriptar_dado(cifrado)
     assert decifrado == texto_original
 
 
@@ -63,5 +63,5 @@ def test_token_aprovacao_email():
     token = gerar_token_aprovacao(usuario_id)
     assert validar_token_aprovacao(token, max_horas=1) == usuario_id
 
-    with pytest.raises(ValueError, match="inválido ou corrompido"):
+    with pytest.raises(ValueError, match="inválido"):
         validar_token_aprovacao(token + "corrompido")

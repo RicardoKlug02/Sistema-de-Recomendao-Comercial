@@ -1,13 +1,14 @@
-from sqlalchemy import Column, Integer, Float, ForeignKey, Date, String
+from sqlalchemy import Column, Integer, Float, ForeignKey, Date, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 from src.backend.app.core.database import Base
 
 
 class Venda(Base):
     __tablename__ = "vendas"
+    __table_args__ = (UniqueConstraint("fabrica_id", "numero_pedido", name="uq_venda_fabrica_pedido"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    numero_pedido = Column(String(50), unique=True, index=True)
+    numero_pedido = Column(String(50), index=True)
     cliente_id = Column(Integer, ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True)
     vendedor_id = Column(Integer, ForeignKey("vendedores.id"), nullable=True, index=True)
     fabrica_id = Column(Integer, ForeignKey("fabricas.id"), nullable=False, index=True)

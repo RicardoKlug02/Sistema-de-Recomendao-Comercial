@@ -24,7 +24,7 @@ class AssociacaoService:
         for venda_id, produto_id in registros:
             cestas_map[venda_id].add(produto_id)
 
-        return [itens for itens in cestas_map.values() if len(itens) >= 2]
+        return list(cestas_map.values())
 
     def recomendar_cross_selling(
         self,

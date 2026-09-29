@@ -3,7 +3,7 @@ from src.backend.app.core.database import Base
 
 class ResumoVendasGeral(Base):
     __tablename__ = "resumo_vendas_geral"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     ano_mes = Column(String(7), index=True)
     regiao_imediata = Column(String(100), index=True)
     vendedor_id = Column(Integer, nullable=True)
@@ -14,7 +14,7 @@ class ResumoVendasGeral(Base):
 
 class ClienteAnalytics(Base):
     __tablename__ = "cliente_analytics"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     cliente_id = Column(Integer, ForeignKey("clientes.id"), unique=True)
     venda_ultimo_mes = Column(Float, default=0.0)
     media_ultimos_6_meses = Column(Float, default=0.0)
@@ -28,7 +28,7 @@ class ClienteAnalytics(Base):
 
 class FabricaAnalytics(Base):
     __tablename__ = "fabrica_analytics"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     fabrica_id = Column(Integer, ForeignKey("fabricas.id"))
     regiao_imediata = Column(String(100), index=True)
     total_vendas = Column(Float, default=0.0)
@@ -38,7 +38,7 @@ class FabricaAnalytics(Base):
 
 class AlertaComercial(Base):
     __tablename__ = "alerta_comercial"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     tipo_alerta = Column(String(50), nullable=False)
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True)
     vendedor_id = Column(Integer, ForeignKey("vendedores.id"), nullable=True)

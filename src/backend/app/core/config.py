@@ -7,7 +7,7 @@ ENV_FILE_PATH = Path(__file__).resolve().parents[4] / ".env"
 
 class Settings(BaseSettings):
     # App
-    DEBUG: bool = True
+    DEBUG: bool = False
     API_VERSION: str = "v1"
     BACKEND_URL: str = "http://localhost:8000"
     ADMIN_EMAIL: str = "diretor@empresa.com"
@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     ]
 
     # Banco de Dados
-    DATABASE_URL: str
+    DATABASE_URL: str = ""
+    DATABASE_POOL_SIZE: int = 2
+    DATABASE_MAX_OVERFLOW: int = 1
     DB_HOST: str = "localhost"
     DB_PORT: str = "5432"
     DB_NAME: str = "meubanco_tcc"
@@ -28,11 +30,17 @@ class Settings(BaseSettings):
 
     # Segurança
     SECRET_KEY: str
-    JWT_SECRET_KEY: str
-    CHAVE_SERIALIZER: str
+    JWT_SECRET_KEY: str = ""
+    CHAVE_SERIALIZER: str = ""
+    BLIND_INDEX_SALT: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     SECRET_ENCRYPTION_KEY: str
+    SERVE_FRONTEND: bool = True
+    MAX_UPLOAD_MB: int = 10
+    ADMIN_PASSWORD: str = ""
+    ADMIN_NAME: str = "Administrador"
+    MAIL_ENABLED: bool = False
 
     # SMTP FastMail
     MAIL_USERNAME: str = ""

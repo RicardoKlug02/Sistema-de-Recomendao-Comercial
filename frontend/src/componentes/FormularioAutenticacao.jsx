@@ -1,82 +1,43 @@
 import { useRef, useState } from 'react'
 import CampoFormulario from './CampoFormulario'
-import { entrar, solicitarRecuperacaoSenha, validarEmail } from '../servicos/autenticacao'
+import { entrar, registrar, validarEmail } from '../servicos/autenticacao'
 
 export default function FormularioAutenticacao({ modo, aoEntrar, aoNavegar }) {
-  const ehLogin = modo === 'entrar'
+  const login = modo === 'entrar'
+  const [nome, definirNome] = useState('')
   const [email, definirEmail] = useState('')
   const [senha, definirSenha] = useState('')
-  const [erros, definirErros] = useState({})
-  const [erroSolicitacao, definirErroSolicitacao] = useState('')
+  const [erro, definirErro] = useState('')
+  const [mensagem, definirMensagem] = useState('')
   const [enviando, definirEnviando] = useState(false)
-  const [concluido, definirConcluido] = useState(false)
-  const solicitacaoPendente = useRef(false)
-
-  async function enviarFormulario(evento) {
+  const pendente = useRef(false)
+  async function enviar(evento) {
     evento.preventDefault()
-    if (solicitacaoPendente.current || concluido) return
-    const novosErros = {
-      email: validarEmail(email),
-      senha: ehLogin && !senha.trim() ? 'Informe sua senha.' : '',
-    }
-    definirErros(novosErros)
-    definirErroSolicitacao('')
-    const primeiroInvalido = Object.keys(novosErros).find((chave) => novosErros[chave])
-    if (primeiroInvalido) {
-      evento.currentTarget.elements.namedItem(primeiroInvalido).focus()
-      return
-    }
-    solicitacaoPendente.current = true
+    if (pendente.current) return
+    const validacao = validarEmail(email) || (!senha ? 'Informe a senha.' : '') ||
+      (!login && (nome.trim().length < 2 || senha.length < 6) ? 'Informe nome e senha com pelo menos 6 caracteres.' : '')
+    definirErro(validacao)
+    if (validacao) return
+    pendente.current = true
     definirEnviando(true)
     try {
-      if (ehLogin) {
-        const resultado = await entrar({ email, senha })
+      if (login) aoEntrar((await entrar({ email, senha })).usuario)
+      else {
+        const resposta = await registrar({ nome, email, senha })
+        definirMensagem(resposta.mensagem)
         definirSenha('')
-        aoEntrar(resultado.usuario)
-      } else {
-        await solicitarRecuperacaoSenha({ email })
-        definirConcluido(true)
       }
-    } catch {
-      definirErroSolicitacao(ehLogin
-        ? 'Não foi possível entrar. Tente novamente.'
-        : 'Não foi possível solicitar a recuperação. Tente novamente.')
-    } finally {
-      solicitacaoPendente.current = false
-      definirEnviando(false)
-    }
+    } catch (falha) { definirErro(falha.message) }
+    finally { pendente.current = false; definirEnviando(false) }
   }
-
-  return (
-    <form className="formulario-autenticacao" onSubmit={enviarFormulario} noValidate aria-busy={enviando}>
-      {concluido ? (
-        <p className="mensagem-retorno" role="status">
-          Solicitação simulada para <strong>{email.trim()}</strong>.
-        </p>
-      ) : (
-        <>
-          <CampoFormulario id="email" rotulo="Email" type="email" autoComplete={ehLogin ? 'username' : 'email'}
-            placeholder="usuario@rioverdeindaial.com.br" value={email} erro={erros.email}
-            disabled={enviando} onChange={(evento) => {
-              definirEmail(evento.target.value)
-              definirErros((anteriores) => ({ ...anteriores, email: '' }))
-            }} />
-          {ehLogin && <CampoFormulario id="senha" rotulo="Senha" type="password" autoComplete="current-password"
-            placeholder="Digite sua senha aqui" value={senha} erro={erros.senha}
-            disabled={enviando} onChange={(evento) => {
-              definirSenha(evento.target.value)
-              definirErros((anteriores) => ({ ...anteriores, senha: '' }))
-            }} />}
-          {erroSolicitacao && <p className="erro-campo" role="alert">{erroSolicitacao}</p>}
-          <button className="botao-principal" type="submit" disabled={enviando}>
-            {enviando ? (ehLogin ? 'Entrando…' : 'Solicitando…') : (ehLogin ? 'Entrar' : 'Recuperar senha')}
-          </button>
-          <span className="somente-leitor" role="status">{enviando ? 'Aguarde, processando solicitação.' : ''}</span>
-        </>
-      )}
-      <button className="botao-texto" type="button" disabled={enviando} onClick={aoNavegar}>
-        {ehLogin ? 'Esqueceu a senha?' : 'Voltar para o login'}
-      </button>
-    </form>
-  )
+  return <form className="formulario-autenticacao" onSubmit={enviar}>
+    {!login && <CampoFormulario id="nome" rotulo="Nome" value={nome} onChange={(e) => definirNome(e.target.value)} disabled={enviando} />}
+    <CampoFormulario id="email" rotulo="E-mail" type="email" autoComplete="username" value={email} onChange={(e) => definirEmail(e.target.value)} disabled={enviando} />
+    <CampoFormulario id="senha" rotulo="Senha" type="password" autoComplete={login ? 'current-password' : 'new-password'} value={senha} onChange={(e) => definirSenha(e.target.value)} disabled={enviando} />
+    {erro && <p role="alert" className="erro-campo">{erro}</p>}
+    {mensagem && <p role="status">{mensagem}</p>}
+    <button className="botao-principal" disabled={enviando}>{enviando ? 'Aguarde…' : login ? 'Entrar' : 'Solicitar acesso'}</button>
+    <button type="button" className="botao-texto" disabled={enviando} onClick={aoNavegar}>{login ? 'Solicitar cadastro' : 'Voltar ao login'}</button>
+    <small>O primeiro acesso após uma pausa do servidor pode demorar. Para redefinir sua senha, contate o administrador.</small>
+  </form>
 }

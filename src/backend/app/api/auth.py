@@ -12,6 +12,9 @@ from src.backend.app.core.security import (
 from src.backend.app.schemas.auth import LoginRequest, RegistroUsuarioRequest, TokenResponse
 from src.backend.app.services.auth_service import AuthService
 from src.backend.app.services.email_service import EmailService
+from src.backend.app.api.deps import get_usuario_admin, get_usuario_atual
+from src.backend.app.models import Usuario
+import logging
 
 router = APIRouter(prefix="/auth", tags=["Autenticação"])
 email_service = EmailService()
@@ -59,16 +62,35 @@ async def registrar_usuario(
     token = gerar_token_aprovacao(novo_usuario.id)
 
     email_destino = getattr(settings, "ADMIN_EMAIL", "diretor@empresa.com")
-    await email_service.enviar_solicitacao_aprovacao(
-        email_admin=email_destino,
-        nome_solicitante=novo_usuario.nome,
-        email_solicitante=novo_usuario.email,
-        token_aprovacao=token,
-    )
+    try:
+        await email_service.enviar_solicitacao_aprovacao(
+            email_admin=email_destino, nome_solicitante=novo_usuario.nome,
+            email_solicitante=novo_usuario.email, token_aprovacao=token,
+        )
+    except Exception:
+        logging.getLogger(__name__).warning("Cadastro pendente: entrega de e-mail indisponível.")
 
     return {
-        "mensagem": "Cadastro realizado com sucesso! Aguarde a aprovação do administrador por e-mail."
+        "mensagem": "Cadastro realizado. Aguarde a aprovação do administrador."
     }
+
+
+@router.get("/me")
+def perfil_atual(usuario: Usuario = Depends(get_usuario_atual)):
+    return {"nome": usuario.nome, "email": usuario.email, "perfil": usuario.perfil}
+
+
+@router.get("/usuarios")
+def listar_cadastros(db: Session = Depends(get_db), _: Usuario = Depends(get_usuario_admin)):
+    return [{"id": u.id, "nome": u.nome, "email": u.email, "aprovado": u.aprovado,
+             "ativo": u.ativo, "perfil": u.perfil} for u in db.query(Usuario).order_by(Usuario.id).all()]
+
+
+@router.post("/usuarios/{usuario_id}/aprovar")
+def aprovar_cadastro(usuario_id: int, db: Session = Depends(get_db), _: Usuario = Depends(get_usuario_admin)):
+    if not AuthService(db).aprovar_usuario(usuario_id):
+        raise HTTPException(404, "Usuário não encontrado.")
+    return {"mensagem": "Usuário aprovado."}
 
 
 @router.get("/aprovar", response_class=HTMLResponse)
