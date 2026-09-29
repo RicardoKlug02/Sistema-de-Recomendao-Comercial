@@ -1,0 +1,1031 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sales Intelligence API",
+    "description": "Motor de Inteligência Comercial B2B, Previsão de Recompra e Cross-Selling",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Login",
+        "description": "Autenticação compatível com OAuth2 Password Flow (Swagger e React).",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_login_api_v1_auth_login_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/registrar": {
+      "post": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Registrar Usuario",
+        "description": "Cadastra usuário bloqueado e dispara e-mail com link de autorização para o gestor.",
+        "operationId": "registrar_usuario_api_v1_auth_registrar_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistroUsuarioRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/aprovar": {
+      "get": {
+        "tags": [
+          "Autenticação"
+        ],
+        "summary": "Aprovar Usuario Via Link",
+        "description": "Ativa o usuário quando o gestor clica no link do e-mail.",
+        "operationId": "aprovar_usuario_via_link_api_v1_auth_aprovar_get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Token de aprovação recebido por e-mail",
+              "title": "Token"
+            },
+            "description": "Token de aprovação recebido por e-mail"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clientes/busca": {
+      "get": {
+        "tags": [
+          "Clientes"
+        ],
+        "summary": "Buscar Clientes",
+        "description": "Autocomplete rápido para a barra de busca global do React.",
+        "operationId": "buscar_clientes_api_v1_clientes_busca_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "termo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "description": "Razão Social, Nome Fantasia ou CNPJ/CPF",
+              "title": "Termo"
+            },
+            "description": "Razão Social, Nome Fantasia ou CNPJ/CPF"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClienteOptionOut"
+                  },
+                  "title": "Response Buscar Clientes Api V1 Clientes Busca Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clientes/alertas/home": {
+      "get": {
+        "tags": [
+          "Clientes"
+        ],
+        "summary": "Obter Alertas Dashboard",
+        "description": "Carrega os cards da tela inicial com os clientes em risco crítico de churn.",
+        "operationId": "obter_alertas_dashboard_api_v1_clientes_alertas_home_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limite"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Obter Alertas Dashboard Api V1 Clientes Alertas Home Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clientes/cross-selling": {
+      "post": {
+        "tags": [
+          "Clientes"
+        ],
+        "summary": "Obter Cross Selling",
+        "description": "Sugestão instantânea de venda casada para itens incluídos em cotações/carrinhos.",
+        "operationId": "obter_cross_selling_api_v1_clientes_cross_selling_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "top_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "default": 4,
+              "title": "Top N"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "title": "Produtos Ids"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Obter Cross Selling Api V1 Clientes Cross Selling Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clientes/{cliente_id}": {
+      "get": {
+        "tags": [
+          "Clientes"
+        ],
+        "summary": "Obter Ficha Cliente",
+        "description": "Dossiê 360 do cliente: faturamento recente, ciclo por fábrica, reposições e abandono.",
+        "operationId": "obter_ficha_cliente_api_v1_clientes__cliente_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cliente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Cliente Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClienteDetalhesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cargas/excel": {
+      "post": {
+        "tags": [
+          "Cargas e Importação"
+        ],
+        "summary": "Upload Planilhas Vendas",
+        "description": "Recebe as duas planilhas do ERP, processa em lote e atualiza a base.",
+        "operationId": "upload_planilhas_vendas_api_v1_cargas_excel_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_planilhas_vendas_api_v1_cargas_excel_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Healthcheck"
+        ],
+        "summary": "Read Root",
+        "operationId": "read_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AbandonoOut": {
+        "properties": {
+          "produto_id": {
+            "type": "integer",
+            "title": "Produto Id"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "dias_parado": {
+            "type": "integer",
+            "title": "Dias Parado"
+          },
+          "ciclo_habitual": {
+            "type": "integer",
+            "title": "Ciclo Habitual"
+          },
+          "total_vezes_comprado": {
+            "type": "integer",
+            "title": "Total Vezes Comprado"
+          }
+        },
+        "type": "object",
+        "required": [
+          "produto_id",
+          "sku",
+          "nome",
+          "dias_parado",
+          "ciclo_habitual",
+          "total_vezes_comprado"
+        ],
+        "title": "AbandonoOut"
+      },
+      "Body_login_api_v1_auth_login_post": {
+        "properties": {
+          "grant_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^password$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "title": "Password"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": ""
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "format": "password",
+            "title": "Client Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Body_login_api_v1_auth_login_post"
+      },
+      "Body_upload_planilhas_vendas_api_v1_cargas_excel_post": {
+        "properties": {
+          "arquivo_cabecalho": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Arquivo Cabecalho",
+            "description": "Planilha de pedidos/cabeçalho"
+          },
+          "arquivo_itens": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Arquivo Itens",
+            "description": "Planilha de itens faturados por produto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "arquivo_cabecalho",
+          "arquivo_itens"
+        ],
+        "title": "Body_upload_planilhas_vendas_api_v1_cargas_excel_post"
+      },
+      "ClienteDetalhesOut": {
+        "properties": {
+          "cliente_id": {
+            "type": "integer",
+            "title": "Cliente Id"
+          },
+          "razao_social": {
+            "type": "string",
+            "title": "Razao Social"
+          },
+          "cnpj_cpf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cnpj Cpf"
+          },
+          "micro_regiao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Micro Regiao"
+          },
+          "grupo_economico": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grupo Economico"
+          },
+          "mensagem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mensagem"
+          },
+          "resumo_fabricas": {
+            "items": {
+              "$ref": "#/components/schemas/FabricaResumoOut"
+            },
+            "type": "array",
+            "title": "Resumo Fabricas",
+            "default": []
+          },
+          "sugestoes_reposicao": {
+            "items": {
+              "$ref": "#/components/schemas/ReposicaoOut"
+            },
+            "type": "array",
+            "title": "Sugestoes Reposicao",
+            "default": []
+          },
+          "produtos_em_abandono": {
+            "items": {
+              "$ref": "#/components/schemas/AbandonoOut"
+            },
+            "type": "array",
+            "title": "Produtos Em Abandono",
+            "default": []
+          },
+          "performance_yoy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/YoYOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sugestoes_expansao_mix": {
+            "items": {
+              "$ref": "#/components/schemas/RecomendacaoProdutoOut"
+            },
+            "type": "array",
+            "title": "Sugestoes Expansao Mix",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "cliente_id",
+          "razao_social"
+        ],
+        "title": "ClienteDetalhesOut"
+      },
+      "ClienteOptionOut": {
+        "properties": {
+          "razao_social": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Razao Social"
+          },
+          "nome_fantasia": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome Fantasia"
+          },
+          "cnpj_cpf": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cnpj Cpf"
+          },
+          "grupo_economico": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grupo Economico"
+          },
+          "cidade": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cidade"
+          },
+          "estado": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estado"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "razao_social",
+          "id"
+        ],
+        "title": "ClienteOptionOut"
+      },
+      "FabricaResumoOut": {
+        "properties": {
+          "fabrica_id": {
+            "type": "integer",
+            "title": "Fabrica Id"
+          },
+          "fabrica": {
+            "type": "string",
+            "title": "Fabrica"
+          },
+          "ultima_compra": {
+            "type": "string",
+            "title": "Ultima Compra"
+          },
+          "dias_sem_comprar": {
+            "type": "integer",
+            "title": "Dias Sem Comprar"
+          },
+          "ciclo_medio_dias": {
+            "type": "integer",
+            "title": "Ciclo Medio Dias"
+          },
+          "dias_para_vencer": {
+            "type": "integer",
+            "title": "Dias Para Vencer"
+          },
+          "data_limite_inatividade": {
+            "type": "string",
+            "title": "Data Limite Inatividade"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "status_gatilho": {
+            "type": "string",
+            "title": "Status Gatilho"
+          },
+          "risco_bloqueio_neste_mes": {
+            "type": "boolean",
+            "title": "Risco Bloqueio Neste Mes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fabrica_id",
+          "fabrica",
+          "ultima_compra",
+          "dias_sem_comprar",
+          "ciclo_medio_dias",
+          "dias_para_vencer",
+          "data_limite_inatividade",
+          "status",
+          "status_gatilho",
+          "risco_bloqueio_neste_mes"
+        ],
+        "title": "FabricaResumoOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "RecomendacaoProdutoOut": {
+        "properties": {
+          "produto_id": {
+            "type": "integer",
+            "title": "Produto Id"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "produto_id",
+          "sku",
+          "nome"
+        ],
+        "title": "RecomendacaoProdutoOut"
+      },
+      "RegistroUsuarioRequest": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Nome"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "senha": {
+            "type": "string",
+            "minLength": 6,
+            "title": "Senha",
+            "description": "Senha com no mínimo 6 caracteres"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome",
+          "email",
+          "senha"
+        ],
+        "title": "RegistroUsuarioRequest"
+      },
+      "ReposicaoOut": {
+        "properties": {
+          "produto_id": {
+            "type": "integer",
+            "title": "Produto Id"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "ciclo_medio": {
+            "type": "integer",
+            "title": "Ciclo Medio"
+          },
+          "dias_desde_ultima": {
+            "type": "integer",
+            "title": "Dias Desde Ultima"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "volume_habitual": {
+            "type": "number",
+            "title": "Volume Habitual"
+          }
+        },
+        "type": "object",
+        "required": [
+          "produto_id",
+          "sku",
+          "nome",
+          "ciclo_medio",
+          "dias_desde_ultima",
+          "status",
+          "volume_habitual"
+        ],
+        "title": "ReposicaoOut"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "usuario_nome": {
+            "type": "string",
+            "title": "Usuario Nome"
+          },
+          "usuario_email": {
+            "type": "string",
+            "format": "email",
+            "title": "Usuario Email"
+          },
+          "usuario_perfil": {
+            "type": "string",
+            "title": "Usuario Perfil"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "usuario_nome",
+          "usuario_email",
+          "usuario_perfil"
+        ],
+        "title": "TokenResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "YoYOut": {
+        "properties": {
+          "periodo_recente": {
+            "type": "string",
+            "title": "Periodo Recente"
+          },
+          "periodo_comparado": {
+            "type": "string",
+            "title": "Periodo Comparado"
+          },
+          "faturamento_recente": {
+            "type": "number",
+            "title": "Faturamento Recente"
+          },
+          "faturamento_ano_anterior": {
+            "type": "number",
+            "title": "Faturamento Ano Anterior"
+          },
+          "crescimento_pct": {
+            "type": "number",
+            "title": "Crescimento Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "periodo_recente",
+          "periodo_comparado",
+          "faturamento_recente",
+          "faturamento_ano_anterior",
+          "crescimento_pct"
+        ],
+        "title": "YoYOut"
+      }
+    },
+    "securitySchemes": {
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "/api/v1/auth/login"
+          }
+        }
+      }
+    }
+  }
+}

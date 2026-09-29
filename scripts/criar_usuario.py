@@ -9,9 +9,11 @@ from src.backend.app.core.database import SessionLocal
 from src.backend.app.core.security import gerar_hash_senha
 from src.backend.app.models.usuario import Usuario
 
-EMAIL_ADMIN = "rick.nklug@gmail.com"
-NOME_ADMIN = "Ricardo Klug"
-SENHA_ADMIN = "Ricklegal55."  
+import os
+from getpass import getpass
+
+EMAIL_ADMIN = os.getenv("ADMIN_EMAIL") or input("E-mail do admin: ")
+SENHA_ADMIN = os.getenv("ADMIN_SENHA") or getpass("Senha do admin: ")
 
 with SessionLocal() as session:
     usuario_existente = session.query(Usuario).filter(Usuario.email == EMAIL_ADMIN).first()
