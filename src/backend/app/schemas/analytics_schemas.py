@@ -1,9 +1,11 @@
 from datetime import date
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import Optional
+from pydantic import BaseModel, ConfigDict
 
 
 class ResumoVendasGeralResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     ano_mes: str
     regiao_imediata: str
@@ -13,11 +15,10 @@ class ResumoVendasGeralResponse(BaseModel):
     quantidade_pedidos: int
     ticket_medio: float
 
-    class Config:
-        from_attributes = True
-
 
 class ClienteAnalyticsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     cliente_id: int
     venda_ultimo_mes: float
@@ -30,11 +31,10 @@ class ClienteAnalyticsResponse(BaseModel):
     produtos_risco_inatividade_json: Optional[str] = None
     produtos_sem_segunda_compra_json: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
 
 class FabricaAnalyticsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     fabrica_id: int
     regiao_imediata: str
@@ -43,11 +43,10 @@ class FabricaAnalyticsResponse(BaseModel):
     tendencia_venda: Optional[str] = None
     top_produtos_json: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
 
 class AlertaComercialResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     tipo_alerta: str
     cliente_id: Optional[int] = None
@@ -55,6 +54,3 @@ class AlertaComercialResponse(BaseModel):
     fabrica_id: Optional[int] = None
     descricao_acao: Optional[str] = None
     data_referencia: Optional[date] = None
-
-    class Config:
-        from_attributes = True
