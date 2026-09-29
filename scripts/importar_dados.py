@@ -1,39 +1,53 @@
-import sys
+"""Importa pares do ERP; cada par é uma transação e falhas retornam exit code 1."""
+
+import argparse
 from pathlib import Path
+import sys
 
-raiz = Path(__file__).resolve().parent.parent
-if str(raiz) not in sys.path:
-    sys.path.insert(0, str(raiz))
-
-from sqlalchemy.orm import Session
-from src.backend.app.core.database import engine
+RAIZ = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RAIZ))
+from src.backend.app.core.database import SessionLocal
+from src.backend.app.models.importacao import Importacao
 from src.backend.app.services.excel_service import ExcelService
 
-if __name__ == "__main__":
-    pasta_raw = Path("data/raw")
-    
-    # Encontra todos os arquivos de cabeçalho
-    arquivos_pedidos = sorted(pasta_raw.glob("Pedidos *.xls*"))
 
-    with Session(engine) as session:
-        service = ExcelService(db_session=session)
-
-        for path_cab in arquivos_pedidos:
-            # Extrai o sufixo (ex: "Jan 26")
-            sufixo = path_cab.name.replace("Pedidos ", "")
-            
-            # Procura o arquivo de itens correspondente
-            candidatos_itens = list(pasta_raw.glob(f"Produtos vendidos {sufixo}"))
-            
-            if not candidatos_itens:
-                print(f"[PULADO] Nenhum arquivo de itens correspondente para: {path_cab.name}")
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pasta", type=Path, default=RAIZ / "data/raw")
+    parser.add_argument(
+        "--permitir-atualizacao",
+        action="store_true",
+        help="Permitir alterações em pedidos já existentes após conferência.",
+    )
+    args = parser.parse_args()
+    arquivos = sorted(args.pasta.glob("Pedidos *.xls*"))
+    if not arquivos:
+        print("Nenhuma planilha de pedidos encontrada.")
+        return 1
+    falhas = 0
+    with SessionLocal() as db:
+        for cab in arquivos:
+            itens = cab.with_name(cab.name.replace("Pedidos ", "Produtos vendidos ", 1))
+            if not itens.is_file():
+                print(f"{cab.name}: falta a planilha de itens correspondente.")
+                falhas += 1
                 continue
-                
-            path_itens = candidatos_itens[0]
-            print(f"\nImportando: {path_cab.name} com {path_itens.name}...")
-            
-            resultado = service.importar_processo_completo(
-                path_cab=str(path_cab), 
-                path_itens=str(path_itens)
+            resultado = ExcelService(db).importar_processo_completo(
+                cab, itens, permitir_atualizacao=args.permitir_atualizacao, commit=False
             )
-            print(f"Resultado: {resultado}")
+            db.add(
+                Importacao(
+                    arquivos=f"{cab.name} + {itens.name}",
+                    usuario="CLI",
+                    status=resultado["status"],
+                    mensagem=resultado["mensagem"],
+                )
+            )
+            db.commit()
+            print(f"{cab.name}: {resultado['mensagem']}")
+            falhas += resultado["status"] == "erro"
+    return 1 if falhas else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

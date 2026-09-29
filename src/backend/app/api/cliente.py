@@ -14,7 +14,9 @@ router = APIRouter(prefix="/clientes", tags=["Clientes"])
 
 @router.get("/busca", response_model=List[ClienteOptionOut])
 def buscar_clientes(
-    termo: str = Query(..., min_length=2, description="Razão Social, Nome Fantasia ou CNPJ/CPF"),
+    termo: str = Query(
+        ..., min_length=2, description="Razão Social, Nome Fantasia ou CNPJ/CPF"
+    ),
     db: Session = Depends(get_db),
     _: Usuario = Depends(get_usuario_atual),
 ):
@@ -63,3 +65,85 @@ def obter_ficha_cliente(
         )
 
     return detalhes
+
+
+@router.get("")
+def listar_clientes(
+    termo: str = "",
+    pagina: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_usuario_atual),
+):
+    from src.backend.app.models.cliente import Cliente
+    from src.backend.app.core.security import gerar_blind_index
+
+    termo = termo.strip().casefold()
+    encontrados = []
+    for c in db.query(Cliente).order_by(Cliente.id).yield_per(200):
+        texto = " ".join(
+            [
+                c.razao_social,
+                c.nome_fantasia or "",
+                c.cidade or "",
+                c.grupo_economico or "",
+                c.cnpj_cpf or "",
+            ]
+        ).casefold()
+        if not termo or termo in texto or c.cnpj_hash == gerar_blind_index(termo):
+            encontrados.append(c)
+    return {
+        "total": len(encontrados),
+        "itens": [
+            ClienteOptionOut.model_validate(c)
+            for c in encontrados[(pagina - 1) * 20 : pagina * 20]
+        ],
+    }
+
+
+@router.get("/{cliente_id}/vendas")
+def historico_cliente(
+    cliente_id: int,
+    pagina: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_usuario_atual),
+):
+    from sqlalchemy.orm import joinedload
+    from src.backend.app.models import Cliente, Venda, ItemVenda
+
+    if not db.get(Cliente, cliente_id):
+        raise HTTPException(404, "Cliente não encontrado.")
+    q = db.query(Venda).filter(Venda.cliente_id == cliente_id)
+    total = q.count()
+    vendas = (
+        q.options(
+            joinedload(Venda.fabrica),
+            joinedload(Venda.itens).joinedload(ItemVenda.produto),
+        )
+        .order_by(Venda.data_venda.desc(), Venda.id.desc())
+        .offset((pagina - 1) * 20)
+        .limit(20)
+        .all()
+    )
+    return {
+        "total": total,
+        "itens": [
+            dict(
+                id=v.id,
+                numero_pedido=v.numero_pedido,
+                data_venda=v.data_venda,
+                fabrica=v.fabrica.nome_fantasia,
+                valor_total=v.valor_total,
+                itens=[
+                    dict(
+                        id=i.id,
+                        nome=i.produto.nome,
+                        quantidade=i.quantidade,
+                        preco_unitario=i.preco_unitario,
+                        subtotal=i.subtotal,
+                    )
+                    for i in v.itens
+                ],
+            )
+            for v in vendas
+        ],
+    }

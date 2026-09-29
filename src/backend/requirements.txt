@@ -1,0 +1,2 @@
+# Entrada compatível; o lock único fica na raiz.
+-r ../../requirements.txt

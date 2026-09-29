@@ -105,10 +105,12 @@ class AuthService:
                 "sub": usuario.email,
                 "id": usuario.id,
                 "perfil": usuario.perfil,
+                "versao": usuario.versao_sessao,
             }
         )
         return {
             "access_token": token,
+            "usuario_id": usuario.id,
             "token_type": "bearer",
             "usuario_nome": usuario.nome,
             "usuario_email": usuario.email,

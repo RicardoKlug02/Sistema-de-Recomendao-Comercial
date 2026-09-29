@@ -33,7 +33,7 @@ def get_usuario_atual(
     auth_service = AuthService(db_session=db)
     usuario = auth_service.buscar_por_email(email)
 
-    if not usuario:
+    if not usuario or payload.get("versao") != usuario.versao_sessao:
         raise credenciais_exception
 
     if not usuario.ativo:

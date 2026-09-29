@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, ForeignKey, Date, String
+from sqlalchemy import Column, Integer, Numeric, ForeignKey, Date, String
 from sqlalchemy.orm import relationship
 from src.backend.app.core.database import Base
 
@@ -12,7 +12,7 @@ class Venda(Base):
     vendedor_id = Column(Integer, ForeignKey("vendedores.id"), nullable=True, index=True)
     fabrica_id = Column(Integer, ForeignKey("fabricas.id"), nullable=False, index=True)
     data_venda = Column(Date, nullable=False, index=True)  # Indexado para filtros de datas rápidos
-    valor_total = Column(Float, default=0.0, nullable=False)
+    valor_total = Column(Numeric(16, 2), default=0.0, nullable=False)
 
     # Relações
     cliente = relationship("Cliente", back_populates="vendas")

@@ -81,7 +81,7 @@ class YoYOut(BaseModel):
     periodo_comparado: str
     faturamento_recente: float
     faturamento_ano_anterior: float
-    crescimento_pct: float
+    crescimento_pct: Optional[float]
 
 
 class RecomendacaoProdutoOut(BaseModel):
@@ -89,6 +89,10 @@ class RecomendacaoProdutoOut(BaseModel):
     sku: str
     nome: str
     score: Optional[float] = None
+    afinidade_percentual: Optional[float] = None
+    classificacao: Optional[str] = None
+    volume_sugerido_unidades: Optional[int] = None
+    motivo: Optional[str] = None
 
 
 class ClienteDetalhesOut(BaseModel):
@@ -97,6 +101,8 @@ class ClienteDetalhesOut(BaseModel):
     cnpj_cpf: Optional[str] = None
     micro_regiao: Optional[str] = None
     grupo_economico: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
     mensagem: Optional[str] = None
     resumo_fabricas: List[FabricaResumoOut] = []
     sugestoes_reposicao: List[ReposicaoOut] = []

@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import { useEffect, useRef, useState } from 'react'
 import Cartao from '../componentes/Cartao'
 import CartaoIndicador from '../componentes/CartaoIndicador'
@@ -35,12 +36,57 @@ export default function Importacao({ usuario, ativa, aoImportar }) {
       aoImportar()
     } catch (falha) {
       if (falha.name !== 'AbortError') definirErro(falha.message)
+=======
+import { data } from "../servicos/formatacao";
+import { useRef, useState } from "react";
+import Cartao from "../componentes/Cartao";
+import { api } from "../servicos/api";
+import { Consulta, Tabela, Paginacao } from "../componentes/Elementos";
+import "./Importacao.css";
+export default function Importacao() {
+  const [resultado, informar] = useState(null);
+  const [erro, falhar] = useState("");
+  const [ocupado, ocupar] = useState(false);
+  const [versao, atualizar] = useState(0);
+  const [pagina, paginar] = useState(1);
+  const envio = useRef(false);
+  async function importar(e) {
+    e.preventDefault();
+    if (envio.current) return;
+    const form = new FormData(e.currentTarget);
+    for (const campo of ["arquivo_cabecalho", "arquivo_itens"]) {
+      const arq = form.get(campo);
+      if (
+        !arq?.size ||
+        arq.size > 10 * 1024 * 1024 ||
+        !/\.(xls|xlsx)$/i.test(arq.name)
+      ) {
+        falhar(
+          "Selecione duas planilhas XLS/XLSX não vazias, de até 10 MB cada.",
+        );
+        return;
+      }
+    }
+    envio.current = true;
+    ocupar(true);
+    falhar("");
+    informar(null);
+    try {
+      const r = await api("/cargas/excel", { method: "POST", body: form });
+      informar(r);
+      atualizar(versao + 1);
+      paginar(1);
+    } catch (e) {
+      falhar(e.message);
+      atualizar(versao + 1);
+>>>>>>> Stashed changes
     } finally {
-      envioEmCurso.current = false
-      definirEnviando(false)
+      ocupar(false);
+      envio.current = false;
     }
   }
   return (
+<<<<<<< Updated upstream
     <main className="conteudo-painel tela-importacao" hidden={!ativa}>
       <header className="cabecalho-painel">
         <div>
@@ -152,4 +198,122 @@ export default function Importacao({ usuario, ativa, aoImportar }) {
       </p>
     </main>
   )
+=======
+    <>
+      <Cartao
+        titulo="Importar pedidos e produtos"
+        descricao="Envie as duas planilhas do mesmo período. A carga inteira será validada antes de atualizar a base."
+      >
+        <form className="formulario-pagina" onSubmit={importar}>
+          <label className="area-arquivo">
+            <strong>1. Pedidos / cabeçalho</strong>
+            <span>Identificação do cliente, fábrica, data e total</span>
+            <input
+              type="file"
+              name="arquivo_cabecalho"
+              accept=".xls,.xlsx"
+              required
+              disabled={ocupado}
+            />
+          </label>
+          <label className="area-arquivo">
+            <strong>2. Produtos vendidos / itens</strong>
+            <span>Pedido, SKU, quantidade e preço</span>
+            <input
+              type="file"
+              name="arquivo_itens"
+              accept=".xls,.xlsx"
+              required
+              disabled={ocupado}
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              name="permitir_atualizacao"
+              value="true"
+              disabled={ocupado}
+            />{" "}
+            Permitir atualizar pedidos existentes após conferir as duas
+            planilhas
+          </label>
+          <small>
+            Limite de 10 MB por arquivo. Não inclua pedidos incompletos.
+            Reenvios idênticos não duplicam vendas.
+          </small>
+          <button className="botao-principal" disabled={ocupado}>
+            {ocupado ? "Validando e importando…" : "Validar e importar"}
+          </button>
+        </form>
+        {ocupado && (
+          <p role="status">
+            Aguarde a conclusão antes de reenviar os arquivos.
+          </p>
+        )}
+        {erro && (
+          <p className="erro-campo aviso" role="alert">
+            {erro}
+          </p>
+        )}
+        {resultado && (
+          <div className="aviso" role="status">
+            <strong>{resultado.mensagem}</strong>
+            <p>
+              {resultado.adicionados} pedidos adicionados ·{" "}
+              {resultado.atualizados} atualizados · {resultado.inalterados}{" "}
+              inalterados · {resultado.itens} itens
+            </p>
+          </div>
+        )}
+      </Cartao>
+      <Cartao
+        titulo="Layout aceito"
+        descricao="Planilhas tabulares ou relatórios do ERP com cabeçalho e seções por produto."
+      >
+        <p>
+          Pedidos: pedido, CNPJ/CPF, cliente, fábrica, data, valor total.
+          Opcionais: vendedor, grupo, cidade, estado, micro região.
+        </p>
+        <p>
+          Itens: pedido, SKU, nome do produto, quantidade, preço unitário.
+          Opcionais: subtotal, categoria.
+        </p>
+        <p>
+          Datas e valores inválidos, pedidos sem itens e divergências de totais
+          impedem a carga. A fábrica deve ser identificada; não será criada uma
+          associação automática à primeira fábrica.
+        </p>
+      </Cartao>
+      <Cartao titulo="Histórico de importações">
+        <Consulta caminho={`/cargas?pagina=${pagina}`} versao={versao}>
+          {({ itens, total }) => (
+            <>
+              <Tabela
+                colunas={[
+                  "Arquivos",
+                  "Data",
+                  "Responsável",
+                  "Situação",
+                  "Detalhes",
+                ]}
+                linhas={itens.map((i) => [
+                  i.arquivos,
+                  data(i.criado_em),
+                  i.usuario,
+                  i.status,
+                  <details>
+                    <summary>Ver resultado</summary>
+                    <p>{i.mensagem}</p>
+                  </details>,
+                ])}
+                vazio="Nenhuma importação registrada."
+              />
+              <Paginacao pagina={pagina} total={total} aoMudar={paginar} />
+            </>
+          )}
+        </Consulta>
+      </Cartao>
+    </>
+  );
+>>>>>>> Stashed changes
 }

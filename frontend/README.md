@@ -1,9 +1,19 @@
+<<<<<<< Updated upstream
 # Frontend — Rio Verde Representações
 
 Interface React/Vite em português, com tema claro e logo original. Consome a API publicada em [Render](https://sistema-de-recomendao-comercial.onrender.com/docs). Não usa dados demonstrativos nem requer banco local.
+=======
+# Frontend Rio Verde
 
-## Executar
+React, Vite e CSS responsivo. As telas usam a API real. Veja a [instalação completa](../README.md).
+>>>>>>> Stashed changes
 
+```sh
+npm ci
+npm run dev
+```
+
+<<<<<<< Updated upstream
 Na pasta `frontend`:
 
 ```bash
@@ -53,3 +63,19 @@ npm run build
 ```
 
 Os testes automatizados verificam o contrato com respostas controladas; não enviam dados ao Render. Para validar com a base real, entre com uma conta autorizada, procure um cliente conhecido e envie um par de relatórios apropriado. Confira a mensagem da importação e consulte novamente o cliente.
+=======
+Login, cadastro, recuperação, redefinição, dashboard, clientes, ficha individual, oportunidades, alertas, relatórios, importação, usuários e minha conta estão acessíveis por rotas hash. Exemplo: `/#/clientes/1`.
+
+A ficha do cliente possui visão geral, histórico detalhado e recomendações. Usuários sem perfil de gestão não veem importação/administração e a API também impede esse acesso. A sessão e o token ficam apenas em memória; atualização da página exige novo login, preservando a rota solicitada.
+
+`VITE_API_URL` pode substituir o endereço da API. Sem essa variável, o proxy do Vite encaminha `/api` para a porta 8000.
+
+```sh
+npm run lint
+npm run build
+npx playwright install chromium
+npm run test:e2e
+```
+
+Os testes E2E usam o servidor sintético de `tests/servidor_e2e.py`, nas portas 8765 e 5178. Há cenários desktop/mobile para a ficha, navegação, acesso por perfil, cadastro, recuperação e relatórios. Os relatórios suportam impressão da página atual. O histórico de importação vem do banco.
+>>>>>>> Stashed changes

@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import os
 import sys
 
@@ -19,5 +20,16 @@ def init_db():
     print("Tabelas criadas com sucesso!")
 
 
+=======
+"""Atualiza o schema via migrações; nunca usa create_all na base operacional."""
+
+from pathlib import Path
+import os
+from alembic.config import Config
+from alembic import command
+
+raiz = Path(__file__).resolve().parents[1]
+os.chdir(raiz)
+>>>>>>> Stashed changes
 if __name__ == "__main__":
-    init_db()
+    command.upgrade(Config(str(raiz / "alembic.ini")), "head")

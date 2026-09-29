@@ -9,6 +9,7 @@ class Produto(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     fabrica_id = Column(Integer, ForeignKey("fabricas.id", ondelete="RESTRICT"), nullable=False, index=True)
     nome = Column(String(255), nullable=False, index=True)
+    categoria = Column(String(100), nullable=True, index=True)
     sku = Column(String(150), unique=True, index=True)
 
     # Relações bidirecionais

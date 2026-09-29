@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 const origemRender = 'https://sistema-de-recomendao-comercial.onrender.com'
 const enderecoApi = (
   import.meta.env?.VITE_API_URL || (import.meta.env?.DEV ? '/api/v1' : `${origemRender}/api/v1`)
@@ -71,4 +72,39 @@ export async function solicitarApi(caminho, { publico = false, prazo = 90000, si
     clearTimeout(limite)
     signal?.removeEventListener('abort', cancelar)
   }
+=======
+const base = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/$/, "");
+let token = null;
+export function definirToken(valor) {
+  token = valor;
+}
+export async function api(caminho, opcoes = {}) {
+  const { body, ...resto } = opcoes;
+  const formulario =
+    body instanceof FormData || body instanceof URLSearchParams;
+  const resposta = await fetch(`${base}${caminho}`, {
+    ...resto,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(!formulario && body ? { "Content-Type": "application/json" } : {}),
+      ...resto.headers,
+    },
+    body: body ? (formulario ? body : JSON.stringify(body)) : undefined,
+  });
+  const dados = await resposta.json().catch(() => ({}));
+  if (!resposta.ok) {
+    if (resposta.status === 401 && token) {
+      definirToken(null);
+      window.dispatchEvent(new Event("sessao-expirada"));
+    }
+    const detalhe = Array.isArray(dados.detail)
+      ? dados.detail.map((e) => e.msg).join("; ")
+      : dados.detail;
+    throw new Error(
+      detalhe ||
+        `Não foi possível concluir a solicitação (${resposta.status}).`,
+    );
+  }
+  return dados;
+>>>>>>> Stashed changes
 }

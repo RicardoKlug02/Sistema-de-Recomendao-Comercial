@@ -6,3 +6,4 @@ from .produto import Produto
 from .venda import Venda
 from .item_venda import ItemVenda
 from .usuario import Usuario
+from .importacao import Importacao

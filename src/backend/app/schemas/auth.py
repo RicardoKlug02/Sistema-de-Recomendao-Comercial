@@ -10,10 +10,11 @@ class LoginRequest(BaseModel):
 class RegistroUsuarioRequest(BaseModel):
     nome: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
-    senha: str = Field(..., min_length=6, description="Senha com no mínimo 6 caracteres")
+    senha: str = Field(..., min_length=10, description="Senha com no mínimo 10 caracteres")
 
 
 class TokenResponse(BaseModel):
+    usuario_id: int
     access_token: str
     token_type: str = "bearer"
     usuario_nome: str

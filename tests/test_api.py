@@ -24,6 +24,7 @@ def test_fluxo_autenticacao_registro_login(client):
     assert login_bloqueado.status_code in (401, 403)
     assert "pendente de aprovação" in login_bloqueado.json()["detail"]
 
+
 def test_bloqueio_rotas_sem_token_jwt(client):
     # Tenta consultar busca sem header Authorization -> 401 Unauthorized
     res = client.get("/api/v1/clientes/busca?termo=Mercado")

@@ -14,9 +14,6 @@ class ItemVendaResponse(ItemVendaBase):
     venda_id: int
     nome_produto: Optional[str] = Field(None, description="Nome do produto para facilitar exibição no front")
 
-    @computed_field
-    @property
-    def subtotal(self) -> float:
-        return round(self.quantidade * self.preco_unitario, 2)
+    subtotal: float
 
     model_config = ConfigDict(from_attributes=True)

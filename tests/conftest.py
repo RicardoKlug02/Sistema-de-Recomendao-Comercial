@@ -29,6 +29,20 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+# Testes nunca herdam banco ou segredos operacionais.
+import os
+from cryptography.fernet import Fernet
+
+os.environ.update(
+    DATABASE_URL="sqlite:///:memory:",
+    JWT_SECRET_KEY="test-jwt-" + "x" * 48,
+    CHAVE_SERIALIZER="test-serializer-" + "x" * 48,
+    BLIND_INDEX_SALT="test-index-" + "x" * 48,
+    SECRET_ENCRYPTION_KEY=Fernet.generate_key().decode(),
+    MAIL_FROM="test@example.com",
+    MAIL_ENABLED="True",
+)
+
 from src.backend.app.core.database import Base, get_db
 from src.backend.main import app
 from src.backend.app.models.usuario import Usuario
@@ -47,7 +61,9 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(autouse=True)
 def mock_email_service():
     """Intercepta chamadas de e-mail automaticamente em todos os testes."""
-    with patch("fastapi_mail.FastMail.send_message", new_callable=AsyncMock) as mock_mail:
+    with patch(
+        "fastapi_mail.FastMail.send_message", new_callable=AsyncMock
+    ) as mock_mail:
         yield mock_mail
 
 
@@ -70,6 +86,7 @@ def client(db_session):
         finally:
             pass
 
+    app.middleware_stack = None
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
         yield test_client

@@ -74,7 +74,7 @@ class ClienteService:
             ]
 
         # 3. Varredura decifrada em memória (Fallback para Razão Social / Nome Fantasia)
-        candidatos = self.db.query(Cliente).limit(300).all()
+        candidatos = self.db.query(Cliente).order_by(Cliente.id).yield_per(200)
         termo_lower = termo_limpo.lower()
         resultados = []
 
@@ -130,6 +130,8 @@ class ClienteService:
 
         base_info = {
             "cliente_id": cliente.id,
+            "cidade": cliente.cidade,
+            "estado": cliente.estado,
             "razao_social": cliente.razao_social,
             "cnpj_cpf": cliente.cnpj_cpf,
             "micro_regiao": cliente.micro_regiao,
@@ -224,7 +226,7 @@ class ClienteService:
         sugestoes = []
         for pid, dados in produtos_map.items():
             compras = sorted(dados["compras"], key=lambda x: x[0])
-            datas = [c[0] for c in compras]
+            datas = sorted({c[0] for c in compras})
             if len(datas) < 2:
                 continue
 
@@ -259,7 +261,7 @@ class ClienteService:
 
         abandonados = []
         for pid, dados in produtos_map.items():
-            datas = sorted(dados["datas"])
+            datas = sorted(set(dados["datas"]))
             if len(datas) < 3:
                 continue
 
@@ -304,7 +306,7 @@ class ClienteService:
         variacao = (
             ((fat_recente - fat_anterior) / fat_anterior * 100)
             if fat_anterior > 0
-            else 0.0
+            else None
         )
 
         return {
@@ -312,5 +314,5 @@ class ClienteService:
             "periodo_comparado": ano_anterior_inicio.strftime("%m/%Y"),
             "faturamento_recente": round(float(fat_recente), 2),
             "faturamento_ano_anterior": round(float(fat_anterior), 2),
-            "crescimento_pct": round(float(variacao), 2),
+            "crescimento_pct": round(float(variacao), 2) if variacao is not None else None,
         }

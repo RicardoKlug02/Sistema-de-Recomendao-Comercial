@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import Marca from './comercial/Marca'
 import Icone from './comercial/Icone'
 
@@ -57,8 +58,57 @@ export default function MenuLateral({ usuario, secaoAtiva, aoNavegar, aoSair }) 
         </div>
         <button className="botao-sair" onClick={aoSair}>
           Sair da conta <Icone nome="sair" tamanho={17} />
+=======
+const itens = [
+  ["painel", "Visão geral", "◫"],
+  ["clientes", "Clientes", "◎"],
+  ["oportunidades", "Oportunidades", "↗"],
+  ["alertas", "Alertas", "◷"],
+  ["relatorios", "Relatórios", "▤"],
+  ["importacoes", "Importação", "↓"],
+  ["usuarios", "Usuários", "♙"],
+  ["perfil", "Minha conta", "○"],
+];
+export default function MenuLateral({ usuario, secaoAtiva, aoSair }) {
+  const admin = ["admin", "gestor"].includes(usuario.perfil);
+  return (
+    <aside className="menu-lateral">
+      <a className="marca" href="#/painel">
+        <span className="simbolo-marca">▥</span>
+        <span>
+          Rio Verde<small>REPRESENTAÇÕES</small>
+        </span>
+      </a>
+      <p className="legenda-menu">INTELIGÊNCIA COMERCIAL</p>
+      <nav aria-label="Menu principal">
+        {itens
+          .filter(([id]) => !["usuarios", "importacoes"].includes(id) || admin)
+          .map(([id, titulo, icone]) => (
+            <a
+              key={id}
+              href={`#/${id}`}
+              aria-current={secaoAtiva === id ? "page" : undefined}
+            >
+              <span aria-hidden="true">{icone}</span>
+              {titulo}
+            </a>
+          ))}
+      </nav>
+      <div className="rodape-menu">
+        <div className="perfil">
+          <span className="avatar">
+            {usuario.nome.slice(0, 2).toUpperCase()}
+          </span>
+          <div>
+            <strong>{usuario.nome}</strong>
+            <small>{usuario.perfil}</small>
+          </div>
+        </div>
+        <button className="botao-sair" onClick={aoSair}>
+          Sair da conta <span>↗</span>
+>>>>>>> Stashed changes
         </button>
       </div>
     </aside>
-  )
+  );
 }

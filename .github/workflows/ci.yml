@@ -1,0 +1,67 @@
+name: Verificação do sistema
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.8-alpine
+        env:
+          POSTGRES_DB: rioverde_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests -q
+      - name: Migrações em PostgreSQL vazio
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rioverde_test
+        run: |
+          python scripts/configurar.py
+          python -m alembic upgrade head
+          python -m alembic check
+          python -m alembic downgrade c63ed4dbc762
+          python -m alembic upgrade head
+          python -m alembic check
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint && npm run build
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+        env:
+          E2E_PYTHON: python
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: navegador
+          path: frontend/test-results/
