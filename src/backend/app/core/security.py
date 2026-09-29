@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from cryptography.fernet import Fernet
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from jose import JWTError, jwt
 
 from src.backend.app.core.config import settings
@@ -77,3 +78,37 @@ def verificar_token_acesso(token: str) -> Optional[Dict[str, Any]]:
         return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     except JWTError:
         return None
+
+
+def decodificar_token_acesso(token: str) -> Optional[Dict[str, Any]]:
+    """Decodifica o JWT de acesso. Devolve o payload ou None se inválido/expirado.
+
+    Usada por api/deps.py (get_usuario_atual).
+    """
+    return verificar_token_acesso(token)
+
+
+# ---------------------------------------------------------------------------
+# Token de aprovação de cadastro (link enviado por e-mail ao gestor)
+# ---------------------------------------------------------------------------
+_SALT_APROVACAO = "aprovacao-usuario"
+
+
+def _serializer_aprovacao() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(settings.SECRET_KEY, salt=_SALT_APROVACAO)
+
+
+def gerar_token_aprovacao(usuario_id: int) -> str:
+    """Gera o token assinado usado no link de aprovação enviado ao gestor."""
+    return _serializer_aprovacao().dumps({"usuario_id": usuario_id})
+
+
+def validar_token_aprovacao(token: str, max_horas: int = 48) -> int:
+    """Devolve o id do usuário. Levanta ValueError se o token for inválido ou expirado."""
+    try:
+        dados = _serializer_aprovacao().loads(token, max_age=max_horas * 3600)
+    except SignatureExpired:
+        raise ValueError("Link de aprovação expirado.")
+    except BadSignature:
+        raise ValueError("Link de aprovação inválido.")
+    return int(dados["usuario_id"])
