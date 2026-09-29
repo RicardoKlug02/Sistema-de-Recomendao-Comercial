@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -6,6 +7,23 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
+from cryptography.fernet import Fernet
+
+# Os testes nunca usam credenciais, e-mails ou banco de produção.
+os.environ.update({
+    "DATABASE_URL": "postgresql://teste:teste@127.0.0.1:5432/teste",
+    "SECRET_KEY": "segredo-exclusivo-dos-testes",
+    "JWT_SECRET_KEY": "jwt-exclusivo-dos-testes",
+    "CHAVE_SERIALIZER": "aprovacao-exclusiva-dos-testes",
+    "SECRET_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+    "EMAIL_PROVEDOR": "smtp",
+    "RESEND_API_KEY": "",
+    "MAIL_FROM": "sistema@teste.com",
+    "MAIL_USERNAME": "sistema@teste.com",
+    "MAIL_PASSWORD": "senha-ficticia",
+    "ADMIN_EMAIL": "admin@teste.com",
+    "BACKEND_URL": "https://api.teste.com",
+})
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:

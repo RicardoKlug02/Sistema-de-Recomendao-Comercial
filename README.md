@@ -1,40 +1,26 @@
-# Sistema de Recomendação e Dashboard Gerencial (TCC)
+# Sistema de Recomendação Comercial — Rio Verde
 
-Sistema de suporte à decisão para representantes comerciais e vendedores internos dos segmentos de materiais de construção, elétrico e agropecuário. O projeto busca reunir indicadores de vendas e recomendações de produtos para apoiar o acompanhamento de clientes e a identificação de oportunidades comerciais.
-
-Comit
+Sistema de suporte à decisão para representantes comerciais, com acompanhamento de clientes, alertas de recompra e recomendações baseadas no histórico da carteira.
 
 ## Estado atual
 
-O frontend já permite navegar do login ao dashboard, baseado nos wireframes da pasta `docs`.
+O frontend está conectado à API hospedada no Render: [documentação interativa](https://sistema-de-recomendao-comercial.onrender.com/docs).
 
-| Recurso | Situação |
+| Recurso | Implementação |
 | --- | --- |
-| Dashboard | Quatro indicadores, faturamento mensal, vendas por categoria, principais clientes, últimas importações e oportunidades recentes. Dados demonstrativos. |
-| Menu e cards | Componentes reutilizáveis; o menu navega às seções do próprio painel. |
-| Detalhes das oportunidades | Diálogo com cliente, produto, relevância e valor estimado. |
-| Importação | Seleção ou arraste de XLS/XLSX até 10 MB, resultado simulado, detalhes e histórico paginado. Sem envio ao backend. |
-| Backend | Estrutura inicial em FastAPI, modelos de dados e serviço de importação de planilhas. Ainda não integrado ao frontend. |
+| Autenticação | Login real com token Bearer e contas ativas/aprovadas. Sessão mantida na aba; expiração retorna ao login. |
+| Visão geral | Cartões de alertas de recompra com busca, prioridade e tipo. Indicadores calculados somente sobre os até 50 alertas retornados. |
+| Clientes | Busca real por razão social, nome fantasia ou documento; cartões com acesso ao perfil. |
+| Cliente 360° | Comparação de faturamento, ciclos por fábrica, reposição, abandono e sugestões de expansão de mix. |
+| Produtos complementares | Consulta de produtos comprados em conjunto, a partir de itens escolhidos no perfil. |
+| Importação | Envio real de duas planilhas XLS/XLSX ao backend, disponível para administradores e gestores. Atualiza as consultas após confirmação. |
+| Aparência | Tema claro, verde suave, logo Rio Verde e componentes responsivos em português. |
 
-A tela completa de clientes, a autenticação real, o motor de recomendação, os alertas e os relatórios com filtros estão previstos para as próximas etapas. JWT ainda não está implementado.
+A API publicada ainda não expõe indicadores financeiros globais, listagem completa paginada, filtros comerciais globais ou histórico de importações. A interface informa essas limitações e não preenche campos com dados demonstrativos. Não há recomendações de whitespace regional.
 
-## Tecnologias
+## Executar a interface
 
-- **Frontend:** JavaScript, React 19, Vite 8, HTML e CSS; ESLint para análise do código.
-- **Backend:** Python e FastAPI; Pydantic para os esquemas de dados.
-- **Persistência:** PostgreSQL e SQLAlchemy, com estrutura inicial de migrações em Alembic.
-- **Importação e tratamento de dados:** Pandas.
-- **Testes do backend:** Pytest.
-
-O dashboard utiliza recursos nativos de HTML e CSS para os gráficos, sem bibliotecas adicionais de visualização.
-
-## Executar o frontend
-
-É possível testar a interface sem iniciar o backend ou configurar o banco de dados.
-
-**Pré-requisitos:** Node.js 20.19+ da versão 20 ou Node.js 22.12+ e npm, conforme a versão do Vite utilizada.
-
-Na raiz do repositório:
+Requer Node.js compatível com Vite 8: 20.19+ na série 20 ou 22.12+.
 
 ```bash
 cd frontend
@@ -42,94 +28,49 @@ npm ci
 npm run dev
 ```
 
-Acesse o endereço informado pelo Vite, normalmente [http://localhost:5173](http://localhost:5173).
+Abra o endereço informado pelo Vite, normalmente `http://localhost:5173`. Entre com uma conta ativa e aprovada da API. Não é necessário iniciar Python ou PostgreSQL para usar o backend do Render.
 
-Para demonstrar o fluxo, informe qualquer e-mail válido e uma senha não vazia. O login abre o dashboard; “Sair da conta” retorna à autenticação. Senhas e tokens não são persistidos.
+Em desenvolvimento, as chamadas passam pelo proxy do Vite para o Render. Na produção, a interface usa diretamente a API hospedada. Para substituir a URL, consulte `frontend/.env.example` e reinicie/recompile a interface. Tokens e senhas não devem ser colocados nessas variáveis.
 
-Na pasta `frontend`, os comandos de verificação são:
+Verificações na pasta `frontend`:
 
 ```bash
+npm test
 npm run lint
 npm run build
 ```
 
-A compilação gera os arquivos de produção em `frontend/dist`. Consulte o [README do frontend](frontend/README.md) para conhecer os componentes, suas responsabilidades e o roteiro de conferência manual.
+## Importar Excel
 
-## Backend em desenvolvimento
+Envie os relatórios **de pedidos/cabeçalho** e **de produtos vendidos/itens**, do mesmo período. A interface aceita arquivos XLS e XLSX de até 10 MB cada. Os arquivos são enviados à base real do backend; confirme a escolha antes de importar.
 
-O ponto de entrada é `src/backend/main.py`. Atualmente, ele expõe a rota inicial `GET /`; as rotas comerciais ainda não estão registradas na aplicação.
+O resultado reproduz a mensagem retornada pelo servidor. Contagens só aparecem quando o backend as fornece. O histórico persistente de cargas ainda depende de uma rota adicional. A documentação detalhada da interface está em [frontend/README.md](frontend/README.md).
 
-O arquivo `src/backend/requirements.txt` ainda está vazio. Para executar apenas a API inicial, crie um ambiente virtual e instale as dependências mínimas, a partir da raiz:
+## Estrutura
+
+- `frontend/`: React, Vite, serviços de API e testes de contrato.
+- `src/backend/`: código Python/FastAPI e serviços comerciais.
+- `alembic/`: migrações do banco PostgreSQL.
+- `scripts/`: utilitários locais do backend.
+- `data/`: dados e documentação do tratamento de planilhas.
+- `docs/`: requisitos e referências visuais.
+- `tests/`: testes existentes do backend.
+
+O contrato publicado em `/openapi.json` é a referência da integração. As rotas de analytics presentes no código local não estão registradas na API publicada. Alterar o backend local não altera o serviço no Render sem uma publicação correspondente.
+
+## Cadastro e aprovação por e-mail
+
+O backend requer Python 3.11 ou superior. A configuração e publicação da correção
+de cadastro estão em [docs/autenticacao-email.md](docs/autenticacao-email.md).
+Falhas de envio retornam 503 com orientação para retomar o cadastro, mantendo
+o usuário bloqueado até a aprovação. O login continua disponível quando o
+provedor de e-mail está indisponível.
+
+Testes isolados (sem banco de produção nem envio real de e-mails):
 
 ```bash
-python -m venv .venv
+python -m pytest tests/test_autenticacao_email.py tests/test_api.py tests/test_seguranca.py -q
 ```
-
-Ative o ambiente no macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-Ou no PowerShell do Windows:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-Em seguida:
-
-```bash
-python -m pip install fastapi uvicorn
-python -m uvicorn src.backend.main:app --reload
-```
-
-A API fica disponível em [http://localhost:8000](http://localhost:8000), com documentação interativa em [http://localhost:8000/docs](http://localhost:8000/docs).
-
-Essa instalação mínima não cobre os módulos de banco e importação. Para integrá-los, ainda é necessário consolidar as dependências no `requirements.txt`, configurar o PostgreSQL e revisar as migrações. O arquivo `.env.example` contém o modelo das variáveis de ambiente: copie-o para `.env` na raiz e preencha os campos `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` e `DB_PASSWORD` ao configurar a persistência. `SECRET_KEY` está reservado para a autenticação futura.
-
-## Estrutura do repositório
-
-```text
-.
-├── .github/                 # Configurações e automação do GitHub
-├── alembic/                 # Estrutura inicial de migrações
-├── alembic.ini              # Configuração do Alembic
-├── data/                    # Dados e documentação do tratamento
-├── docs/                    # Requisitos e wireframes das telas
-├── frontend/
-│   ├── public/              # Recursos estáticos
-│   ├── src/
-│   │   ├── componentes/     # Menu, cards e campos reutilizáveis
-│   │   ├── paginas/         # Dashboard comercial e seus estilos
-│   │   ├── servicos/        # Autenticação simulada e dados do painel
-│   │   ├── Aplicacao.jsx    # Fluxo de autenticação e sessão
-│   │   └── main.jsx         # Inicialização do React
-│   └── README.md            # Documentação específica da interface
-├── scripts/                 # Utilitários de inicialização do banco
-├── src/backend/
-│   ├── app/
-│   │   ├── api/             # Definições de rotas
-│   │   ├── core/            # Configuração do banco
-│   │   ├── models/          # Modelos SQLAlchemy
-│   │   ├── schemas/         # Esquemas Pydantic
-│   │   └── services/        # Serviço de importação de planilhas
-│   ├── main.py              # Aplicação FastAPI
-│   └── requirements.txt     # Dependências a consolidar
-├── tests/                   # Testes Python existentes
-├── .env.example             # Modelo de configuração local
-└── README.md
-```
-
-Os componentes, funções e serviços próprios do frontend utilizam nomes em português, com responsabilidades descritas no README dessa camada. Propriedades nativas de React e HTML mantêm os nomes exigidos pelas tecnologias.
-
-## Referências visuais
-
-- [Tela de login](docs/Tela%20de%20login.png)
-- [Wireframe do dashboard](docs/wireframe_dashboard.png)
-- [Wireframe de clientes](docs/wireframe_cliente.png)
-- [Wireframe de importação](docs/wireframe_importacao.png)
-- [Documentação da camada de dados](data/README.md)
 
 ## Colaboradores
 

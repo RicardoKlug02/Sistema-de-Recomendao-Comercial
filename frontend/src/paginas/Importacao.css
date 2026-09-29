@@ -1,6 +1,6 @@
 /* Complementa os estilos e componentes compartilhados do painel. */
 .tela-importacao > .cartao + .cartao { margin-top: 22px; }
-.caminho-importacao, .aviso-simulacao { color: var(--secundaria); font-size: 11px; line-height: 1.6; }
+.caminho-importacao, .nota-informativa { color: var(--secundaria); font-size: 11px; line-height: 1.6; }
 .caminho-importacao { margin: 0 0 22px; }
 .area-arquivo { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 36px 16px; border: 1px dashed #b8c8be; border-radius: 7px; text-align: center; font-size: 13px; }
 .area-arquivo svg, .area-arquivo small { color: var(--secundaria); }
@@ -28,3 +28,8 @@
   .arquivo-selecionado div { flex-basis: 100%; }
   .tela-importacao .botao-secundario, .tela-importacao .botao-detalhes { min-height: 44px; }
 }
+.grade-arquivos { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.area-arquivo input { width: 100%; max-width: 300px; }
+.area-arquivo small { overflow-wrap: anywhere; }
+.tela-importacao .rolagem-tabela small { display: block; max-width: 400px; padding-top: 8px; }
+@media (max-width: 900px) { .grade-arquivos { grid-template-columns: 1fr; } }

@@ -2,33 +2,46 @@ import { useEffect, useRef, useState } from 'react'
 import CartaoAutenticacao from './componentes/CartaoAutenticacao'
 import FormularioAutenticacao from './componentes/FormularioAutenticacao'
 import PainelComercial from './paginas/PainelComercial'
+import { encerrarSessao, obterSessao } from './servicos/api'
 import './Autenticacao.css'
 
 export default function Aplicacao() {
-  const [tela, definirTela] = useState('entrar')
-  const [usuario, definirUsuario] = useState(null)
+  const [usuario, definirUsuario] = useState(() => obterSessao()?.usuario || null)
+  const [mensagem, definirMensagem] = useState('')
   const referenciaTitulo = useRef(null)
   useEffect(() => {
-    referenciaTitulo.current?.focus()
-    const titulo = usuario ? 'Dashboard' : tela === 'entrar' ? 'Login' : 'Recuperar senha'
-    document.title = `${titulo} | Sistema de Recomendação Comercial`
-  }, [tela, usuario])
-
+    function expirar() {
+      definirUsuario(null)
+      definirMensagem('Sua sessão expirou. Entre novamente para continuar.')
+    }
+    window.addEventListener('sessao-expirada', expirar)
+    return () => window.removeEventListener('sessao-expirada', expirar)
+  }, [])
+  useEffect(() => {
+    if (!usuario) {
+      document.title = 'Login | Rio Verde Representações'
+      referenciaTitulo.current?.focus()
+    }
+  }, [usuario])
   function sair() {
+    encerrarSessao()
     definirUsuario(null)
-    definirTela('entrar')
+    definirMensagem('')
   }
-
-  if (usuario) return <PainelComercial usuario={usuario} aoSair={sair} referenciaTitulo={referenciaTitulo} />
-
+  if (usuario) return <PainelComercial usuario={usuario} aoSair={sair} />
   return (
     <main className="pagina-autenticacao">
       <CartaoAutenticacao
-        titulo={tela === 'entrar' ? 'Sistema de Recomendação Rio Verde Rep' : 'Recuperar senha'}
-        subtitulo={tela === 'entrar' ? 'Acesse sua conta para continuar' : 'Informe o e-mail da sua conta'}
-        referenciaTitulo={referenciaTitulo}>
-        <FormularioAutenticacao key={tela} modo={tela} aoEntrar={definirUsuario}
-          aoNavegar={() => definirTela(tela === 'entrar' ? 'recuperar' : 'entrar')} />
+        titulo="Acesse sua carteira."
+        subtitulo="Entre com sua conta para acompanhar os dados comerciais."
+        referenciaTitulo={referenciaTitulo}
+      >
+        {mensagem && (
+          <p className="erro-campo" role="alert">
+            {mensagem}
+          </p>
+        )}
+        <FormularioAutenticacao aoEntrar={definirUsuario} />
       </CartaoAutenticacao>
     </main>
   )

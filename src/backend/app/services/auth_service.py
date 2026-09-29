@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from src.backend.app.core.security import criar_token_acesso, gerar_hash_senha, verificar_senha
 from src.backend.app.models.usuario import Usuario
@@ -49,6 +50,24 @@ class AuthService:
         self.db.commit()
         self.db.refresh(novo_usuario)
         return novo_usuario
+
+    def solicitar_cadastro(self, nome: str, email: str, senha: str) -> Usuario:
+        """Retoma cadastros pendentes sem alterar senha, nome ou permissões."""
+        existente = self.buscar_por_email(email)
+        if existente:
+            if (
+                existente.ativo
+                and not existente.aprovado
+                and verificar_senha(senha, existente.senha_hash)
+            ):
+                return existente
+            raise ValueError("Não foi possível cadastrar com esses dados. Verifique suas credenciais ou contate o administrador.")
+        try:
+            return self.criar_usuario(nome, email, senha)
+        except IntegrityError as erro:
+            # Duas solicitações simultâneas não devem deixar a sessão inválida.
+            self.db.rollback()
+            raise ValueError("Cadastro já solicitado. Tente novamente com os mesmos dados.") from erro
 
     def aprovar_usuario(self, usuario_id: int) -> bool:
         usuario = self.buscar_por_id(usuario_id)

@@ -1,33 +1,55 @@
-# Frontend — Sistema de Recomendação Comercial
+# Frontend — Rio Verde Representações
 
-Aplicação React com Vite, baseada em `docs/Tela de login.png` e `docs/wireframe_dashboard.png`. Não utiliza bibliotecas adicionais de gráficos ou componentes.
+Interface React/Vite em português, com tema claro e logo original. Consome a API publicada em [Render](https://sistema-de-recomendao-comercial.onrender.com/docs). Não usa dados demonstrativos nem requer banco local.
 
 ## Executar
 
-Na pasta `frontend`, execute `npm install` e `npm run dev`.
-`npm run build` gera a versão de produção
+Na pasta `frontend`:
 
-## Fluxo disponível
+```bash
+npm ci
+npm run dev
+```
 
-- O painel apresenta quatro indicadores, faturamento mensal, vendas por categoria, cinco principais clientes, últimas importações e oportunidades recentes.
-- O menu abre a tela de Importação; Clientes continua navegando ao resumo do painel.
-- “Ver detalhes” abre os dados da oportunidade em um diálogo, fechado pelo botão ou pela tecla Escape, com retorno do foco ao botão de origem.
-- As colunas do gráfico mostram os valores ao receber foco ou passar o mouse.
-- “Sair da conta” retorna ao login. A sessão fica apenas em memória; recarregar exige novo acesso. Senhas e tokens não são persistidos.
-- A recuperação de senha é simulada
-- Os dados do painel são demonstrativos
+Entre com uma conta **ativa e aprovada** do backend. Importar arquivos exige perfil `admin` ou `gestor`. Não existem credenciais fixas no frontend. A senha não é persistida; o token e os dados da sessão ficam no `sessionStorage` da aba. Uma resposta 401 encerra a sessão e retorna ao login.
 
-## Responsabilidades
+Em desenvolvimento, o Vite encaminha `/api` para o Render. Na compilação de produção, a interface chama a URL do Render diretamente. Para outra instalação, defina `VITE_API_URL` com a URL completa até `/api/v1`, conforme `.env.example`, e reinicie/recompile. A API deve permitir a origem do frontend em sua configuração CORS.
 
-| Arquivo em `src/` | Responsabilidade |
+## Funcionalidades conectadas
+
+| Tela | Integração |
 | --- | --- |
-| `Aplicacao.jsx` | Alternar login, recuperação e painel; manter a sessão em memória. |
-| `componentes/CartaoAutenticacao.jsx` | Estruturar o título e conteúdo da autenticação. |
-| `componentes/CampoFormulario.jsx` | Exibir campo, rótulo e erro acessível. |
-| `componentes/FormularioAutenticacao.jsx` | Validar e enviar login ou recuperação, com feedback e controle de envio. |
-| `componentes/MenuLateral.jsx` | Exibir navegação, usuário e saída. |
-| `componentes/Cartao.jsx` | Compartilhar estrutura visual e título acessível entre os blocos do painel. |
-| `componentes/CartaoIndicador.jsx` | Exibir valor e contexto de um indicador. |
-| `paginas/PainelComercial.jsx` | Compor o dashboard e controlar navegação e detalhes. |
-| `servicos/autenticacao.js` | Validar e-mail e simular login e recuperação. |
-| `servicos/dadosPainel.js` | Centralizar dados demonstrativos e formatação monetária. |
+| Login | `POST /auth/login`, formulário OAuth2 com `username` e `password`. |
+| Visão geral | `GET /clientes/alertas/home?limite=50`; cartões com filtros por busca, prioridade e tipo. As contagens representam somente os alertas recebidos. |
+| Clientes | `GET /clientes/busca?termo=...`, a partir de dois caracteres, com ordenação dos resultados por nome ou cidade. A busca não equivale a uma listagem completa da carteira. |
+| Cliente 360° | `GET /clientes/{id}`; comparação de faturamento, ciclos por fábrica, reposição, abandono e expansão de mix. |
+| Produtos complementares | `POST /clientes/cross-selling?top_n=4`, com array direto dos IDs selecionados dentre os produtos do histórico disponíveis no dossiê. |
+| Importação | `POST /cargas/excel`, multipart com `arquivo_cabecalho` e `arquivo_itens`. Após confirmação, invalida as consultas para buscar dados atualizados. |
+
+Todas as rotas acima usam o prefixo `/api/v1`. Consultas protegidas enviam `Authorization: Bearer ...`. A busca cancela requisições antigas; erros e indisponibilidade do Render são apresentados com opção de tentar novamente.
+
+## Planilhas
+
+Selecione os dois relatórios do ERP para o mesmo período: **pedidos/cabeçalho** e **produtos vendidos/itens**. A interface aceita XLS/XLSX e limita cada arquivo a 10 MB. O tratamento e a persistência são de responsabilidade do backend publicado.
+
+A resposta da importação tem formato livre: a interface apresenta a mensagem do servidor e só mostra contagens quando elas são fornecidas explicitamente. Não inventa quantidades nem histórico local. Em timeout, o servidor pode continuar processando; a interface orienta conferir os dados antes de reenviar e não repete o envio automaticamente.
+
+## Limites do contrato publicado
+
+A API atual não oferece faturamento consolidado, série mensal global, metas, filtros por representante/segmento/período, listagem paginada de todos os clientes, histórico de importações, recuperação de senha ou `/auth/me`. A interface não chama essas rotas nem apresenta dados fictícios para preencher as lacunas. Faturamento é exibido apenas quando retornado na ficha individual. Recomendações de whitespace regional continuam excluídas.
+
+## Organização e verificação
+
+- `src/servicos/api.js`: origem, token, tratamento de erros, timeout e cancelamento.
+- `src/servicos/autenticacao.js` e `importacao.js`: contratos de escrita.
+- `src/ganchos/useConsulta.js`: consultas canceláveis, sem reaproveitar respostas de buscas anteriores.
+- `src/componentes/comercial/`: cartões, filtros, estados de consulta, perfil e recomendações reutilizáveis.
+- `src/paginas/PainelComercial.jsx`: navegação e atualização após importar.
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
+Os testes automatizados verificam o contrato com respostas controladas; não enviam dados ao Render. Para validar com a base real, entre com uma conta autorizada, procure um cliente conhecido e envie um par de relatórios apropriado. Confira a mensagem da importação e consulte novamente o cliente.

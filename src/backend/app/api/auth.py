@@ -9,9 +9,9 @@ from src.backend.app.core.security import (
     gerar_token_aprovacao,
     validar_token_aprovacao,
 )
-from src.backend.app.schemas.auth import LoginRequest, RegistroUsuarioRequest, TokenResponse
+from src.backend.app.schemas.auth import RegistroUsuarioRequest, TokenResponse
 from src.backend.app.services.auth_service import AuthService
-from src.backend.app.services.email_service import EmailService
+from src.backend.app.services.email_service import EmailService, ErroEnvioEmail
 
 router = APIRouter(prefix="/auth", tags=["Autenticação"])
 email_service = EmailService()
@@ -47,24 +47,31 @@ async def registrar_usuario(
     service = AuthService(db_session=db)
 
     try:
-        novo_usuario = service.criar_usuario(
+        novo_usuario = service.solicitar_cadastro(
             nome=dados.nome,
             email=dados.email,
-            senha_plana=dados.senha,
-            perfil="vendedor",
+            senha=dados.senha,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     token = gerar_token_aprovacao(novo_usuario.id)
 
-    email_destino = getattr(settings, "ADMIN_EMAIL", "diretor@empresa.com")
-    await email_service.enviar_solicitacao_aprovacao(
-        email_admin=email_destino,
-        nome_solicitante=novo_usuario.nome,
-        email_solicitante=novo_usuario.email,
-        token_aprovacao=token,
-    )
+    try:
+        await email_service.enviar_solicitacao_aprovacao(
+            email_admin=settings.ADMIN_EMAIL,
+            nome_solicitante=novo_usuario.nome,
+            email_solicitante=novo_usuario.email,
+            token_aprovacao=token,
+        )
+    except ErroEnvioEmail as erro:
+        # O cadastro permanece bloqueado; uma nova tentativa exige a mesma senha.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=("Seu cadastro está salvo, mas não foi possível enviar o e-mail de aprovação. "
+                    "Contate o administrador e, após a correção do envio, repita o cadastro "
+                    "com o mesmo e-mail e senha. Seu acesso ainda não foi liberado."),
+        ) from erro
 
     return {
         "mensagem": "Cadastro realizado com sucesso! Aguarde a aprovação do administrador por e-mail."

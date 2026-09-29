@@ -1,5 +1,4 @@
-// Simula autenticação até a integração com o servidor.
-const simularSolicitacao = () => new Promise((resolver) => setTimeout(resolver, 600))
+import { guardarSessao, solicitarApi } from './api.js'
 
 export function validarEmail(email) {
   if (!email.trim()) return 'Informe seu e-mail.'
@@ -8,12 +7,15 @@ export function validarEmail(email) {
 }
 
 export async function entrar({ email, senha }) {
-  if (validarEmail(email) || !senha.trim()) throw new Error('Confira o e-mail e a senha informados.')
-  await simularSolicitacao()
-  return { usuario: { email: email.trim() } }
-}
-
-export async function solicitarRecuperacaoSenha({ email }) {
-  if (validarEmail(email)) throw new Error('Informe um e-mail válido.')
-  await simularSolicitacao()
+  if (validarEmail(email) || !senha) throw new Error('Confira o e-mail e a senha informados.')
+  const dados = await solicitarApi('/auth/login', {
+    publico: true,
+    method: 'POST',
+    body: new URLSearchParams({ username: email.trim(), password: senha }),
+  })
+  if (!dados.access_token || !dados.usuario_email)
+    throw new Error('O servidor não retornou uma sessão válida.')
+  const usuario = { nome: dados.usuario_nome, email: dados.usuario_email, perfil: dados.usuario_perfil }
+  guardarSessao({ token: dados.access_token, usuario })
+  return { usuario }
 }

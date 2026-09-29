@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     SECRET_ENCRYPTION_KEY: str
 
     # SMTP FastMail
+    EMAIL_PROVEDOR: str = "smtp"
+    RESEND_API_KEY: str = ""
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
     MAIL_FROM: str = ""

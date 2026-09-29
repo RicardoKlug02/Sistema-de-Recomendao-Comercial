@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from cryptography.fernet import Fernet
 from jose import JWTError, jwt
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from src.backend.app.core.config import settings
 
@@ -77,3 +78,31 @@ def verificar_token_acesso(token: str) -> Optional[Dict[str, Any]]:
         return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     except JWTError:
         return None
+
+
+def gerar_token_aprovacao(usuario_id: int) -> str:
+    """Assina um identificador exclusivo para aprovação, separado do token de login."""
+    return URLSafeTimedSerializer(settings.CHAVE_SERIALIZER).dumps(
+        usuario_id, salt="aprovacao-usuario"
+    )
+
+
+def validar_token_aprovacao(token: str, max_horas: int = 48) -> int:
+    """Recusa links adulterados, expirados ou com conteúdo inválido."""
+    try:
+        usuario_id = URLSafeTimedSerializer(settings.CHAVE_SERIALIZER).loads(
+            token, salt="aprovacao-usuario", max_age=max_horas * 3600
+        )
+        if type(usuario_id) is not int or usuario_id <= 0:
+            raise ValueError("Token inválido ou corrompido.")
+        return usuario_id
+    except SignatureExpired as erro:
+        raise ValueError("Link de aprovação expirado. Solicite um novo envio.") from erro
+    except BadSignature as erro:
+        raise ValueError("Token inválido ou corrompido.") from erro
+
+
+# Compatibilidade com os consumidores existentes, sem duplicar implementações.
+decodificar_token_acesso = verificar_token_acesso
+encrypt_data = encriptar_dado
+decrypt_data = decriptar_dado
