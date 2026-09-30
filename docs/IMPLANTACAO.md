@@ -80,3 +80,13 @@ python scripts/reset_db.py --confirmar --host HOST_EXATO_DO_NEON
 ```
 
 Ele apaga as tabelas conhecidas deste projeto, incluindo usuários e histórico, e reconstrói o esquema. Nenhuma planilha local é excluída ou importada automaticamente. Exige configuração de administrador inicial para permitir o acesso após a reconstrução.
+
+## Relatório de ritmo de compras
+
+No Cliente 360º, o relatório compara os últimos 30 dias (incluindo hoje) com a média por 30 dias dos 90 dias imediatamente anteriores. Valor comprado e número de pedidos usam os cabeçalhos, inclusive os pedidos diretos de fábrica.
+
+A variação percentual só aparece com histórico desde o começo da base habitual e pelo menos dois pedidos nela. Média zero ou histórico insuficiente não produz porcentagem artificial. Valores positivos indicam aumento e negativos, redução. Por decisão do escritório, essa comparação não classifica atenção/risco e não cria alertas automáticos.
+
+Quantidades de produtos exigem pelo menos duas datas de compra na base habitual. Se houver pedidos sem itens de uma fábrica em qualquer um dos períodos, a comparação das quantidades dos seus produtos é mostrada como incompleta. Os valores dos pedidos continuam disponíveis. O agrupamento por rede também aplica esse relatório à soma das filiais.
+
+Todas as fábricas seguem a regra de 90 dias para inatividade.

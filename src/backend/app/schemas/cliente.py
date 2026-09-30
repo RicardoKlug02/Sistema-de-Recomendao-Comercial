@@ -105,6 +105,8 @@ class ClienteDetalhesOut(BaseModel):
     valor_comprado: float = 0
     pedidos_emitidos: int = 0
     clientes_agrupados: int = 1
+    ritmo_compras: Optional[dict] = None
+    comparacao_produtos: List[dict] = []
     sugestoes_fabricas: List[dict] = []
     resumo_fabricas: List[FabricaResumoOut] = []
     sugestoes_reposicao: List[ReposicaoOut] = []

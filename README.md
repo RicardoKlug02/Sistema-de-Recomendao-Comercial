@@ -3,7 +3,7 @@
 Aplicação React + FastAPI + PostgreSQL para acompanhar vendas e oportunidades do escritório de representação. O frontend usa a API real, com autenticação JWT.
 
 - Dashboard com filtros de mês e vendedor, faturamento, pedidos, clientes, ticket, produtos e fábricas.
-- Cliente 360º com histórico, ciclos de compra, mix recomendado e agrupamento por rede.
+- Cliente 360º com histórico, ciclos de compra, comparação com a média habitual, mix recomendado e agrupamento por rede.
 - Central de alertas de segundo pedido, inatividade de cliente/fábrica e abandono de produtos.
 - Importação transacional de duas planilhas e histórico das cargas.
 - Aprovação de usuários pela área administrativa.

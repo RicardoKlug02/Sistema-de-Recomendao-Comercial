@@ -177,7 +177,11 @@ class ExcelService:
             chaves.add(chave)
             pedidos_fabricas.setdefault(pedido, set()).add(fabrica.casefold())
             try:
-                data = pd.to_datetime(row.get("data"), dayfirst=True, errors="raise")
+                valor_data = row.get("data")
+                if re.match(r"^\d{4}-\d{2}-\d{2}", str(valor_data)):
+                    data = pd.to_datetime(valor_data, format="ISO8601", errors="raise")
+                else:
+                    data = pd.to_datetime(valor_data, dayfirst=True, errors="raise")
                 if pd.isna(data):
                     raise ValueError()
                 data = data.date()

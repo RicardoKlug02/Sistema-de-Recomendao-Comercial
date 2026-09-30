@@ -7,6 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.backend.app.core.security import gerar_blind_index
+from src.backend.app.services.ritmo_compras import calcular_ritmo, comparar_produtos
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.fabrica import Fabrica
 from src.backend.app.models.item_venda import ItemVenda
@@ -78,6 +79,8 @@ class ClienteService:
             .all()
         )
 
+        vendas_unicas = list({r.venda_id: r for r in registros}.values())
+        ritmo = calcular_ritmo(vendas_unicas, ref)
         base_info = {
             "cliente_id": cliente.id,
             "razao_social": cliente.razao_social,
@@ -85,6 +88,8 @@ class ClienteService:
             "micro_regiao": cliente.micro_regiao,
             "grupo_economico": cliente.grupo_economico,
             "clientes_agrupados": len(cliente_ids),
+            "ritmo_compras": ritmo,
+            "comparacao_produtos": comparar_produtos(registros, ref, ritmo["historico_suficiente"]),
             "valor_comprado": round(sum({r.venda_id: r.valor_total for r in registros}.values()), 2),
             "pedidos_emitidos": len({r.venda_id for r in registros}),
         }

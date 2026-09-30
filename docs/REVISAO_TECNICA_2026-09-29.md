@@ -1,5 +1,7 @@
 # Revisão técnica — Sistema de Recomendação Comercial
 
+> Registro do diagnóstico antes das correções. Os achados abaixo descrevem a versão original; consulte README.md e IMPLANTACAO.md para o comportamento da versão corrigida.
+
 Data: 29/09/2026. Escopo: todos os arquivos de código da API, serviços, modelos, schemas, frontend, scripts, migrações e testes, além da configuração de execução e CI. Os oito pares de planilhas foram lidos apenas para conferir o comportamento do importador; nenhum dado foi gravado no PostgreSQL.
 
 O projeto possui uma estrutura útil em FastAPI, SQLAlchemy e React, com autenticação JWT, aprovação de usuários, recomendações colaborativas, associação de produtos e análise de recompra. Entretanto, o backend está bloqueado na inicialização, há falhas que alteram ou eliminam informações na importação, e a interface continua demonstrativa. Os indicadores e alertas ainda não podem ser usados para decisões comerciais com confiança.

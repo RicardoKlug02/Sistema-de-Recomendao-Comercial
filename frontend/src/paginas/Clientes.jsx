@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Cartao from '../componentes/Cartao'
+import RitmoCompras from '../componentes/RitmoCompras'
 import CartaoIndicador from '../componentes/CartaoIndicador'
 import useDados from '../servicos/useDados'
 import { formatarMoeda } from '../servicos/dadosPainel'
@@ -37,6 +38,7 @@ export default function Clientes({ inicial = null }) {
         <h2>{cliente.razao_social}</h2><p>{cliente.grupo_economico || 'Cliente individual'} · {cliente.clientes_agrupados} estabelecimento(s)</p>
         <div className="grade-indicadores"><CartaoIndicador titulo="Valor comprado" valor={formatarMoeda(cliente.valor_comprado)} detalhe="Histórico completo" />
           <CartaoIndicador titulo="Pedidos emitidos" valor={cliente.pedidos_emitidos} detalhe="Inclui pedidos diretos de fábrica" /></div>
+        <RitmoCompras ritmo={cliente.ritmo_compras} produtos={cliente.comparacao_produtos || []} />
         <Cartao titulo="Fábricas e inatividade"><div className="rolagem-tabela"><table><thead><tr><th>Fábrica</th><th>Última compra</th><th>Data limite</th><th>Status</th></tr></thead>
           <tbody>{cliente.resumo_fabricas.map((f) => <tr key={f.fabrica_id}><th>{f.fabrica}</th><td>{f.ultima_compra}</td><td>{f.data_limite_inatividade}</td><td>{f.status}</td></tr>)}</tbody></table></div></Cartao>
         <div className="grade-resumos">
