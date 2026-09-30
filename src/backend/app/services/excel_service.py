@@ -266,46 +266,59 @@ class ExcelService:
 
     def _validar_e_salvar(self, df_cab, df_prod, commit=True):
         cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod)
-        pedidos_fabricas = {c[1] for c in cabecalhos}
         if self.db.bind.dialect.name == "postgresql":
             from sqlalchemy import text
-            self.db.execute(text("SELECT pg_advisory_xact_lock(20260929)"))
+            if not self.db.execute(text("SELECT pg_try_advisory_xact_lock(20260929)")).scalar():
+                raise ValueError("Outra importação está em andamento. Aguarde a conclusão antes de enviar novamente.")
         fabricas_cache = {f.nome_fantasia.casefold(): f for f in self.db.query(Fabrica).all()}
         vendedores = {v.nome.casefold(): v for v in self.db.query(Vendedor).all()}
         clientes = {c.cnpj_hash: c for c in self.db.query(Cliente).all() if c.cnpj_hash}
-        produtos = {(p.fabrica_id, p.sku): p for p in self.db.query(Produto).all()}
-        vendas = {(v.fabrica_id, v.numero_pedido): v for v in self.db.query(Venda).filter(Venda.numero_pedido.in_(pedidos_fabricas)).all()}
-        adicionados = atualizados = itens_salvos = sem_itens = 0
-        for row, pedido, nome_fabrica, doc, data, valor in cabecalhos:
-            fabrica = fabricas_cache.get(nome_fabrica.casefold())
-            if fabrica is None:
+        # Prepara cadastros em lote; não faz uma viagem ao banco por pedido.
+        for row, _, nome_fabrica, doc, _, _ in cabecalhos:
+            if nome_fabrica.casefold() not in fabricas_cache:
                 fabrica = Fabrica(nome_fantasia=nome_fabrica)
                 self.db.add(fabrica)
-                self.db.flush()
                 fabricas_cache[nome_fabrica.casefold()] = fabrica
+            vend_nome = texto(row.get("vendedor"))
+            if vend_nome and vend_nome.casefold() not in vendedores:
+                vendedor = Vendedor(nome=vend_nome)
+                self.db.add(vendedor)
+                vendedores[vend_nome.casefold()] = vendedor
             doc_hash = gerar_blind_index(doc)
-            cliente = clientes.get(doc_hash)
-            if cliente is None:
+            if doc_hash not in clientes:
                 cliente = Cliente(cnpj_cpf=doc, cnpj_hash=doc_hash, razao_social=texto(row.get("cliente")) or doc)
                 self.db.add(cliente)
-                self.db.flush()
                 clientes[doc_hash] = cliente
+            cliente = clientes[doc_hash]
             cliente.razao_social = texto(row.get("cliente")) or cliente.razao_social
             local_anterior = (cliente.cidade, cliente.estado)
             for campo, origem in (("nome_fantasia", "nome_fantasia"), ("cidade", "cidade"),
                                   ("estado", "estado"), ("cep", "cep"), ("grupo_economico", "rede")):
                 if texto(row.get(origem)):
                     setattr(cliente, campo, texto(row.get(origem)))
+            if cliente.estado:
+                cliente.estado = cliente.estado.upper()
             if cliente.cidade and cliente.estado and (not cliente.micro_regiao or local_anterior != (cliente.cidade, cliente.estado)):
                 from src.backend.app.services.ibge_service import IBGEService
                 cliente.micro_regiao = IBGEService.obter_regiao_imediata(cliente.cidade, cliente.estado)
-            vend_nome = texto(row.get("vendedor"))
-            vendedor = vendedores.get(vend_nome.casefold())
-            if vend_nome and vendedor is None:
-                vendedor = Vendedor(nome=vend_nome)
-                self.db.add(vendedor)
-                self.db.flush()
-                vendedores[vend_nome.casefold()] = vendedor
+        self.db.flush()
+        produtos = {(p.fabrica_id, p.sku): p for p in self.db.query(Produto).all()}
+        for (nome_fabrica, _), lista in grupos.items():
+            fid = fabricas_cache[nome_fabrica].id
+            for sku, nome, _, _ in lista:
+                if (fid, sku) not in produtos:
+                    produto = Produto(sku=sku, nome=nome, fabrica_id=fid)
+                    self.db.add(produto)
+                    produtos[(fid, sku)] = produto
+        self.db.flush()
+        numeros = {c[1] for c in cabecalhos}
+        vendas = {(v.fabrica_id, v.numero_pedido): v for v in self.db.query(Venda).filter(Venda.numero_pedido.in_(numeros)).all()}
+        adicionados = atualizados = sem_itens = 0
+        cargas = []
+        for row, pedido, nome_fabrica, doc, data, valor in cabecalhos:
+            fabrica = fabricas_cache[nome_fabrica.casefold()]
+            cliente = clientes[gerar_blind_index(doc)]
+            vendedor = vendedores.get(texto(row.get("vendedor")).casefold())
             venda = vendas.get((fabrica.id, pedido))
             if venda is None:
                 venda = Venda(numero_pedido=pedido, fabrica_id=fabrica.id)
@@ -316,28 +329,27 @@ class ExcelService:
                 atualizados += 1
             venda.cliente_id, venda.data_venda, venda.valor_total = cliente.id, data, valor
             venda.vendedor_id = vendedor.id if vendedor else None
-            self.db.flush()
-            itens = grupos.get((nome_fabrica.casefold(), pedido), [])
-            if not itens:
+            lista = grupos.get((nome_fabrica.casefold(), pedido), [])
+            if lista:
+                cargas.append((venda, lista))
+            else:
                 sem_itens += 1
-                # Pedido direto de fábrica é válido; reenvio sem itens conserva itens anteriores.
-                continue
-            self.db.query(ItemVenda).filter_by(venda_id=venda.id).delete(synchronize_session=False)
-            for sku, nome, quantidade, preco in itens:
-                produto = produtos.get((fabrica.id, sku))
-                if produto is None:
-                    produto = Produto(sku=sku, nome=nome, fabrica_id=fabrica.id)
-                    self.db.add(produto)
-                    self.db.flush()
-                    produtos[(fabrica.id, sku)] = produto
-                self.db.add(ItemVenda(venda_id=venda.id, produto_id=produto.id,
+        self.db.flush()
+        # Substitui somente pedidos com itens nesta carga; conserva os demais.
+        ids = [v.id for v, _ in cargas]
+        if ids:
+            self.db.query(ItemVenda).filter(ItemVenda.venda_id.in_(ids)).delete(synchronize_session=False)
+        itens_salvos = 0
+        for venda, lista in cargas:
+            for sku, _, quantidade, preco in lista:
+                self.db.add(ItemVenda(venda_id=venda.id, produto_id=produtos[(venda.fabrica_id, sku)].id,
                                       quantidade=quantidade, preco_unitario=preco))
                 itens_salvos += 1
         avisos = []
         if ignorados:
             avisos.append(f"{ignorados} linhas de itens sem cabeçalho correspondente não foram importadas. Confira os filtros dos relatórios.")
         if sem_itens:
-            avisos.append(f"{sem_itens} pedidos sem itens na carga: mantidos no faturamento e fora das análises de mix.")
+            avisos.append(f"{sem_itens} pedidos sem itens na carga: mantidos no faturamento. As análises de mix utilizam somente itens conhecidos.")
         if commit:
             self.db.commit()
         else:
@@ -345,7 +357,6 @@ class ExcelService:
         return {"mensagem": "Importação concluída.", "processados": len(cabecalhos),
                 "adicionados": adicionados, "atualizados": atualizados, "itens": itens_salvos,
                 "pedidos_sem_itens": sem_itens, "itens_ignorados": ignorados, "avisos": avisos}
-
     @staticmethod
     def sanitizar_valor_planilha(valor):
         return texto(valor) if isinstance(valor, str) else valor

@@ -70,7 +70,8 @@ def _processar(arquivo_cabecalho, arquivo_itens, db, usuario, conferir=False, to
             df_cab, df_itens = service._limpar_excel_cabecalho(cab), service._limpar_excel_produtos(itens)
             if not conferir and db.bind.dialect.name == "postgresql":
                 from sqlalchemy import text
-                db.execute(text("SELECT pg_advisory_xact_lock(20260929)"))
+                if not db.execute(text("SELECT pg_try_advisory_xact_lock(20260929)")).scalar():
+                    raise HTTPException(409, "Outra importação está em andamento. Aguarde a conclusão antes de enviar novamente.")
             resumo = service.conferir(df_cab, df_itens)
             arquivos = [hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in (cab, itens)]
             dados_token = {"arquivos": arquivos, "usuario": usuario.id, "estado": resumo.pop("estado")}
