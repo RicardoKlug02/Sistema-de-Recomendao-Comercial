@@ -62,6 +62,7 @@ class ExcelService:
             "cnpj_cpf": ("cnpj_cpf", "cnpj", "cpf", "cpf_cnpj"),
             "vendedor": ("vendedor", "vendedor_a", "representante", "nome_vendedor"),
             "rede": ("rede", "rede_de_clientes", "grupo", "grupo_economico"),
+            "tipo_pedido": ("tipo_pedido", "tipo_do_pedido", "tipo"),
             "cidade": ("cidade", "municipio"), "estado": ("estado", "uf"),
             "cep": ("cep",), "valor_total": ("valor_total", "total", "valor", "valor_do_pedido", "total_pedido", "total_em_produtos"),
             "sku": ("sku", "codigo", "codigo_produto", "codigo_do_produto", "cod_produto"),
@@ -158,7 +159,7 @@ class ExcelService:
             self.db.rollback()
             raise
 
-    def _validar_e_salvar(self, df_cab, df_prod, commit=True):
+    def _preparar_carga(self, df_cab, df_prod):
         if df_cab.empty:
             raise ValueError("A planilha de pedidos está vazia.")
         # Valida toda a carga antes de qualquer substituição dos itens.
@@ -167,6 +168,8 @@ class ExcelService:
         cabecalhos = []
         for linha, row in df_cab.iterrows():
             pedido = identificador(row["pedido"])
+            if "tipo_pedido" in row and normalizar_coluna(row["tipo_pedido"]) not in {"venda", "pedido_de_venda"}:
+                raise ValueError(f"Pedido {pedido}: somente pedidos do tipo Venda são permitidos. Confira o filtro do relatório.")
             fabrica = texto(row.get("fabrica"))
             doc = re.sub(r"\D", "", texto(row.get("cnpj_cpf")))
             if not pedido or not fabrica or len(doc) not in (11, 14):
@@ -210,6 +213,60 @@ class ExcelService:
             if not sku or qtd <= 0 or qtd != int(qtd) or preco < 0:
                 raise ValueError(f"Pedido {pedido}: SKU, quantidade inteira positiva ou preço inválido.")
             grupos.setdefault((fabrica_item, pedido), []).append((sku, texto(item["nome_produto"]) or sku, int(qtd), preco))
+        return cabecalhos, grupos, ignorados
+
+    def conferir(self, df_cab, df_prod):
+        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod)
+        fabricas = {f.id: f.nome_fantasia.casefold() for f in self.db.query(Fabrica).all()}
+        numeros = {c[1] for c in cabecalhos}
+        existentes = {(fabricas[v.fabrica_id], v.numero_pedido): v for v in
+                      self.db.query(Venda).filter(Venda.numero_pedido.in_(numeros)).all()}
+        itens_anteriores = {}
+        ids = [v.id for v in existentes.values()]
+        for item in self.db.query(ItemVenda).filter(ItemVenda.venda_id.in_(ids)).order_by(ItemVenda.id):
+            itens_anteriores.setdefault(item.venda_id, []).append(item)
+        registros, estado = [], []
+        atualizados = sem_itens = total_itens = 0
+        por_fabrica = {}
+        for row, pedido, fabrica, _, data, valor in cabecalhos:
+            chave = (fabrica.casefold(), pedido)
+            venda = existentes.get(chave)
+            itens = grupos.get(chave, [])
+            atualizados += venda is not None
+            sem_itens += not itens
+            total_itens += len(itens)
+            por_fabrica[fabrica] = por_fabrica.get(fabrica, 0) + valor
+            if venda:
+                anteriores = itens_anteriores.get(venda.id, [])
+                estado.append([venda.id, venda.cliente_id, venda.vendedor_id, str(venda.data_venda), venda.valor_total,
+                               [[i.id, i.produto_id, i.quantidade, i.preco_unitario] for i in anteriores]])
+            registros.append({"pedido": pedido, "fabrica": fabrica, "cliente": texto(row.get("cliente")),
+                              "data": data.isoformat(), "valor": valor, "itens": len(itens),
+                              "acao": "Atualizar" if venda else "Adicionar"})
+        from src.backend.app.models import Importacao
+        ultima = self.db.query(Importacao.id).order_by(Importacao.id.desc()).first()
+        import json
+        assinatura = hashlib.sha256(json.dumps([estado, ultima[0] if ultima else 0], sort_keys=True).encode()).hexdigest()
+        avisos = []
+        if ignorados:
+            avisos.append(f"{ignorados} linhas de itens sem pedido correspondente serão ignoradas. Confira o período dos arquivos.")
+        if sem_itens:
+            avisos.append(f"{sem_itens} pedidos sem itens nesta carga: entram no faturamento. Itens anteriormente importados serão conservados.")
+        if atualizados:
+            avisos.append("Pedidos existentes serão atualizados, sem duplicação. Quando houver itens na carga, eles substituirão os itens anteriores do pedido.")
+        if "tipo_pedido" not in df_cab:
+            avisos.append("O arquivo não informa o tipo do pedido. Confirme que contém somente vendas efetivadas que geram comissão.")
+        datas = [c[4] for c in cabecalhos]
+        return {"processados": len(cabecalhos), "adicionados": len(cabecalhos) - atualizados,
+                "atualizados": atualizados, "itens": total_itens, "pedidos_sem_itens": sem_itens,
+                "itens_ignorados": ignorados, "valor_total": round(sum(c[5] for c in cabecalhos), 2),
+                "inicio": min(datas).isoformat(), "fim": max(datas).isoformat(), "avisos": avisos,
+                "fabricas": [{"nome": f, "valor": round(v, 2)} for f, v in por_fabrica.items()],
+                "pedidos": registros[:100], "estado": assinatura}
+
+    def _validar_e_salvar(self, df_cab, df_prod, commit=True):
+        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod)
+        pedidos_fabricas = {c[1] for c in cabecalhos}
         if self.db.bind.dialect.name == "postgresql":
             from sqlalchemy import text
             self.db.execute(text("SELECT pg_advisory_xact_lock(20260929)"))
@@ -234,10 +291,14 @@ class ExcelService:
                 self.db.flush()
                 clientes[doc_hash] = cliente
             cliente.razao_social = texto(row.get("cliente")) or cliente.razao_social
+            local_anterior = (cliente.cidade, cliente.estado)
             for campo, origem in (("nome_fantasia", "nome_fantasia"), ("cidade", "cidade"),
                                   ("estado", "estado"), ("cep", "cep"), ("grupo_economico", "rede")):
                 if texto(row.get(origem)):
                     setattr(cliente, campo, texto(row.get(origem)))
+            if cliente.cidade and cliente.estado and (not cliente.micro_regiao or local_anterior != (cliente.cidade, cliente.estado)):
+                from src.backend.app.services.ibge_service import IBGEService
+                cliente.micro_regiao = IBGEService.obter_regiao_imediata(cliente.cidade, cliente.estado)
             vend_nome = texto(row.get("vendedor"))
             vendedor = vendedores.get(vend_nome.casefold())
             if vend_nome and vendedor is None:

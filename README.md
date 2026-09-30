@@ -5,10 +5,18 @@ Aplicação React + FastAPI + PostgreSQL para acompanhar vendas e oportunidades 
 - Dashboard com filtros de mês e vendedor, faturamento, pedidos, clientes, ticket, produtos e fábricas.
 - Cliente 360º com histórico, ciclos de compra, comparação com a média habitual, mix recomendado e agrupamento por rede.
 - Central de alertas de segundo pedido, inatividade de cliente/fábrica e abandono de produtos.
-- Importação transacional de duas planilhas e histórico das cargas.
+- Conferência de duas planilhas antes da importação transacional, com histórico das cargas.
 - Aprovação de usuários pela área administrativa.
 
 Pedidos diretos de fábrica sem itens são válidos: participam do faturamento e da atividade do cliente/fábrica. Recomendações de produtos utilizam apenas itens conhecidos.
+
+## Planilhas e conferência
+
+Exporte somente **Venda**, com **Pedidos concluídos**, que geram comissão. A planilha de cabeçalhos aceita o relatório do ERP com títulos e filtros acima da tabela: Data de emissão, Pedido, Representada, Razão Social, Nome Fantasia, CNPJ/CPF, Cidade, Estado, Rede de clientes, Vendedor(a), Tipo do pedido e Total em produtos. Preserve CNPJ/CPF como texto, com zeros iniciais. Data, pedido, fábrica, cliente, documento e valor são obrigatórios; cidade e UF permitem consultar a região imediata no IBGE.
+
+Envie cabeçalhos e itens do mesmo período, que pode ser um mês ou vários meses. Clique **Conferir planilhas**, revise período, total, pedidos novos, atualizações e avisos, e confirme que são vendas efetivadas que geram comissão antes de clicar **Confirmar importação**. A conferência não grava vendas e vale por 30 minutos; alterações nos arquivos ou uma nova carga exigem outra conferência. Pedidos existentes são atualizados por fábrica e número, sem duplicação. Itens enviados substituem os anteriores do pedido; um reenvio sem itens conserva itens conhecidos.
+
+Novos clientes no escritório são identificados pela primeira compra em qualquer fábrica; aberturas cliente–fábrica pela primeira compra naquela fábrica. Os indicadores podem se sobrepor e dependem do histórico importado. O filtro de vendedor atribui a abertura ao vendedor do primeiro pedido. A região imediata é obtida por cidade e UF; falhas do IBGE não impedem importar e aparecem como região não identificada.
 
 ## Executar localmente
 

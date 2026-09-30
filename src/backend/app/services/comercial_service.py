@@ -22,14 +22,17 @@ class ComercialService:
                       (vendedor_id is None or v.vendedor_id == vendedor_id)]
         clientes = {c.id: c for c in self.db.query(Cliente).all()}
         fabricas = {f.id: f for f in self.db.query(Fabrica).all()}
-        primeira, ultima, reativados = {}, {}, set()
+        primeira, primeira_fabrica, ultima, reativados = {}, {}, {}, set()
         ids_vendas = {v.id for v in vendas}
         for venda in todas:
-            primeira.setdefault(venda.cliente_id, venda.data_venda)
+            primeira.setdefault(venda.cliente_id, venda)
+            primeira_fabrica.setdefault((venda.cliente_id, venda.fabrica_id), venda)
             if venda.id in ids_vendas and venda.cliente_id in ultima and (venda.data_venda - ultima[venda.cliente_id]).days >= 90:
                 reativados.add(venda.cliente_id)
             ultima[venda.cliente_id] = venda.data_venda
         atendidos = {v.cliente_id for v in vendas}
+        aberturas = [v for v in primeira_fabrica.values() if v.id in ids_vendas]
+        novos = sum(v.id in ids_vendas for v in primeira.values())
         ids_com_itens = {r[0] for r in self.db.query(ItemVenda.venda_id).filter(ItemVenda.venda_id.in_([v.id for v in vendas])).distinct()}
         total = sum(v.valor_total for v in vendas)
         mensal, fat_clientes, fat_fabricas, fat_anteriores = defaultdict(float), defaultdict(float), defaultdict(float), defaultdict(float)
@@ -41,6 +44,10 @@ class ComercialService:
             fat_fabricas[v.fabrica_id] += v.valor_total
         for v in anteriores:
             fat_anteriores[v.fabrica_id] += v.valor_total
+        regioes = defaultdict(float)
+        for v in vendas:
+            c = clientes[v.cliente_id]
+            regioes[(c.micro_regiao or "Região não identificada", c.estado or "UF não informada")] += v.valor_total
         produtos = []
         if vendas:
             linhas = (self.db.query(Produto.id, Produto.nome, Produto.sku, func.sum(ItemVenda.quantidade).label("qtd"),
@@ -55,7 +62,7 @@ class ComercialService:
         return {"mes": mes, "indicadores": {
             "venda_total": round(total, 2), "pedidos_emitidos": len(vendas),
             "clientes_atendidos": len(atendidos), "ticket_medio": round(total / len(vendas), 2) if vendas else 0,
-            "clientes_novos": sum(inicio <= primeira[c] < fim for c in atendidos),
+            "clientes_novos": novos, "aberturas_cliente_fabrica": len(aberturas),
             "clientes_reativados": len(reativados),
             "pedidos_sem_itens": sum(v.id not in ids_com_itens for v in vendas)},
             "faturamento_mensal": [{"mes": m, "valor": round(mensal[m], 2)} for m in meses],
@@ -65,6 +72,10 @@ class ComercialService:
                           "variacao_pct": round((valor / fat_anteriores[f] - 1) * 100, 1) if fat_anteriores[f] else None}
                          for f, valor in sorted(fat_fabricas.items(), key=lambda p: p[1], reverse=True)[:10]],
             "produtos": produtos,
+            "regioes": [{"nome": r, "uf": uf, "valor": round(valor, 2)} for (r, uf), valor in sorted(regioes.items(), key=lambda p: p[1], reverse=True)],
+            "aberturas": [{"cliente_id": v.cliente_id, "cliente": clientes[v.cliente_id].razao_social,
+                           "fabrica": fabricas[v.fabrica_id].nome_fantasia, "data": v.data_venda.isoformat(),
+                           "novo_no_escritorio": primeira[v.cliente_id].id == v.id} for v in aberturas],
             "fabricas_quentes": [{"nome": fabricas[f].nome_fantasia, "crescimento": round((valor / fat_anteriores[f] - 1) * 100, 1)}
                                 for f, valor in fat_fabricas.items() if fat_anteriores[f] and valor > fat_anteriores[f]]}
 

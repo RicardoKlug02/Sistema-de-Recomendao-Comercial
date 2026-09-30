@@ -43,6 +43,6 @@ def test_upload_bloqueado_para_arquivos_nao_excel(client, token_admin):
         "arquivo_cabecalho": ("teste.txt", b"arquivo de texto comum", "text/plain"),
         "arquivo_itens": ("itens.txt", b"arquivo de texto comum", "text/plain"),
     }
-    res = client.post("/api/v1/cargas/excel", headers=headers, files=files)
+    res = client.post("/api/v1/cargas/conferir", headers=headers, files=files)
     assert res.status_code == 400
     assert "Formato inválido" in res.json()["detail"]
