@@ -8,12 +8,30 @@
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
 }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 280px; }
-button, input { font: inherit; }
-button { cursor: pointer; }
-button:disabled { cursor: wait; opacity: .65; }
-button:focus-visible, input:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 280px;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #648c50;
+  outline-offset: 3px;
+}
 .somente-leitor {
   position: absolute;
   width: 1px;
@@ -24,4 +42,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid #2563eb; outline-
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+input[type='checkbox'] {
+  accent-color: #6a8b54;
+}
+svg {
+  flex-shrink: 0;
 }

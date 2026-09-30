@@ -1,11 +1,25 @@
 import Cartao from './Cartao'
+import Icone from './comercial/Icone'
 
-// Apresenta um indicador comercial e seu contexto de comparação.
-export default function CartaoIndicador({ titulo, valor, detalhe }) {
+export default function CartaoIndicador({
+  titulo,
+  valor,
+  detalhe,
+  icone = 'painel',
+  destaque = false,
+}) {
   return (
-    <Cartao titulo={titulo} className="cartao-indicador">
+    <Cartao
+      titulo={titulo}
+      className={`cartao-indicador ${destaque ? 'indicador-destaque' : ''}`}
+      acao={
+        <span className="icone-indicador">
+          <Icone nome={icone} tamanho={18} />
+        </span>
+      }
+    >
       <strong className="valor-indicador">{valor}</strong>
-      <p className="detalhe-indicador">{detalhe}</p>
+      {detalhe && <p className="detalhe-indicador">{detalhe}</p>}
     </Cartao>
   )
 }

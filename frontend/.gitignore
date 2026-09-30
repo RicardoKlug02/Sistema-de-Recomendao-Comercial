@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Resultados locais dos testes de navegador
+test-results/
+playwright-report/

@@ -1,81 +1,128 @@
+/* A tela de acesso repete a paleta do painel, com a marca original do projeto. */
 .pagina-autenticacao {
-  min-height: 100vh;
   min-height: 100svh;
   display: grid;
   place-items: center;
-  padding: 24px 16px;
+  padding: 40px 20px;
+  background:
+    radial-gradient(ellipse at 20% 20%, #e6eddf 0, transparent 55%), #f5f7f2;
 }
 .cartao-autenticacao {
-  width: 320px;
+  width: 460px;
   max-width: 100%;
-  padding: 36px;
+  padding: 40px;
   background: #fff;
-  border-radius: 6px;
+  border: 1px solid #e1e7db;
+  border-radius: 20px;
+  box-shadow: 0 16px 60px #33482a08;
 }
-.cabecalho-autenticacao { text-align: center; margin-bottom: 24px; }
+.cabecalho-autenticacao {
+  margin-bottom: 30px;
+}
+.cabecalho-autenticacao .logo-rio-verde {
+  width: 180px;
+  margin: 0 auto 38px;
+}
 .cabecalho-autenticacao h1 {
-  margin: 0 0 8px;
-  font-size: 38px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -1.4px;
+  margin: 0 0 12px;
+  font-size: 29px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: -0.8px;
+  color: #2d4535;
 }
-.cabecalho-autenticacao h1:focus { outline: none; }
-.cabecalho-autenticacao p { margin: 0; font-size: 13px; line-height: 1.5; color: #767676; }
+.cabecalho-autenticacao p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #75816d;
+}
 .formulario-autenticacao {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  border: 1px solid #dedede;
-  border-radius: 6px;
-  padding: 18px;
+  gap: 20px;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
-.campo-formulario { display: flex; flex-direction: column; gap: 5px; }
-.campo-formulario label { line-height: 17px; }
+.campo-formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.campo-formulario label {
+  color: #53634b;
+  font-size: 12px;
+}
 .campo-formulario input {
   width: 100%;
   min-width: 0;
-  height: 33px;
-  padding: 7px 11px;
-  border: 1px solid #dedede;
-  border-radius: 7px;
-  background: #fff;
-  color: #252525;
+  height: 46px;
+  padding: 11px 13px;
+  border: 1px solid #dce3d6;
+  border-radius: 8px;
+  background: #fcfdfb;
+  color: #2a3c2b;
 }
-.campo-formulario input::placeholder { color: #a0a0a0; opacity: 1; }
-.campo-formulario input[aria-invalid='true'] { border-color: #b42318; }
+.campo-formulario input[aria-invalid='true'] {
+  border-color: #b25b44;
+}
 .botao-principal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  min-height: 32px;
-  padding: 6px 10px;
-  border: 1px solid #3d3d3d;
-  border-radius: 6px;
-  background: #2c2c2c;
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid #527b42;
+  border-radius: 8px;
+  background: #5d824c;
   color: #fff;
-  line-height: 18px;
+  line-height: 1.6;
+  font-size: 13px;
 }
-.botao-principal:hover:not(:disabled) { background: #151515; }
+.botao-principal:hover:not(:disabled) {
+  background: #496c3a;
+}
 .botao-texto {
   align-self: flex-start;
   padding: 0;
   border: 0;
   background: transparent;
-  color: #252525;
+  color: #4c7040;
   text-align: left;
   text-decoration: underline;
-  text-underline-offset: 2px;
-  line-height: 18px;
+  text-underline-offset: 4px;
+  line-height: 1.8;
+  font-size: 12px;
 }
-.botao-texto:hover:not(:disabled) { color: #666; }
-.erro-campo { margin: 0; color: #b42318; font-size: 12px; }
-.mensagem-retorno { margin: 0; overflow-wrap: anywhere; }
-@media (max-width: 360px) {
-  .cartao-autenticacao { padding: 28px 20px; }
-  .cabecalho-autenticacao h1 { font-size: 33px; }
+.formulario-autenticacao small {
+  font-size: 10px;
+  color: #7b8576;
+  line-height: 1.7;
+}
+.erro-campo {
+  margin: 0;
+  color: #a44d37;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.mensagem-retorno {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 500px) {
+  .cartao-autenticacao {
+    padding: 30px 24px;
+  }
+  .cabecalho-autenticacao h1 {
+    font-size: 26px;
+  }
 }
 @media (pointer: coarse) {
-  .campo-formulario input { min-height: 44px; font-size: 16px; }
-  .botao-principal, .botao-texto { min-height: 44px; }
+  .campo-formulario input {
+    font-size: 16px;
+  }
+  .botao-texto {
+    min-height: 44px;
+  }
 }

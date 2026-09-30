@@ -1,13 +1,145 @@
-.filtros-comerciais { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin-bottom: 22px; }
-.filtros-comerciais label, .formulario-carga label { display: grid; gap: 7px; font-size: 13px; }
-.filtros-comerciais input, .filtros-comerciais select { padding: 9px; border: 1px solid #ccd7cf; border-radius: 5px; background: white; min-height: 40px; max-width: 100%; }
-.formulario-carga { display: grid; gap: 18px; max-width: 680px; font-size: 13px; }
-.formulario-carga input { display: block; max-width: 100%; }
-.ficha-cliente { margin-top: 26px; }
-.ficha-cliente > .cartao { margin-bottom: 22px; }
-.ficha-cliente li, .conteudo-painel .cartao > p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-.opcao-rede { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.menu-lateral nav { flex-wrap: wrap; }
-.rolagem-tabela p { padding: 12px; }
-.estrutura-painel .erro-campo { margin-bottom: 14px; }
-@media (max-width: 640px) { .filtros-comerciais label { flex: 1 1 180px; } .menu-lateral nav a { flex: 1 1 120px; } }
+/* Formulários e tabelas operacionais usam os mesmos tokens dos cards analíticos. */
+.filtros-comerciais {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.faixa-filtros {
+  padding: 17px 20px;
+  border: 1px solid var(--borda);
+  border-radius: 11px;
+  background: #fff;
+}
+.filtros-comerciais label,
+.formulario-carga label {
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+  color: #64745b;
+}
+.filtros-comerciais label > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.filtros-comerciais input,
+.filtros-comerciais select {
+  padding: 10px 12px;
+  border: 1px solid #dce3d6;
+  border-radius: 7px;
+  background: #fcfdfb;
+  min-height: 42px;
+  max-width: 100%;
+  color: #354631;
+  font-size: 12px;
+}
+.campo-busca {
+  flex: 1 1 270px;
+}
+.total-resultados {
+  margin: 0 0 13px auto;
+  font-size: 11px;
+  color: #76816f;
+}
+.formulario-carga {
+  display: grid;
+  gap: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.formulario-carga label:has(input[type='file']) {
+  background: #f7f9f3;
+  border: 1px dashed #bacdb0;
+  border-radius: 11px;
+  padding: 24px;
+  font-size: 13px;
+}
+.formulario-carga input {
+  display: block;
+  max-width: 100%;
+}
+.formulario-carga input[type='file']::file-selector-button {
+  border: 1px solid #d3dfc9;
+  border-radius: 7px;
+  padding: 10px 13px;
+  margin-right: 12px;
+  background: white;
+  color: #456638;
+  cursor: pointer;
+}
+.formulario-carga input[type='checkbox'] {
+  display: inline-block;
+}
+.formulario-carga .botao-principal {
+  width: fit-content;
+  min-width: 190px;
+}
+.ficha-cliente {
+  margin-top: 10px;
+}
+.ficha-cliente > .cartao {
+  margin-bottom: 22px;
+}
+.ficha-cliente li,
+.conteudo-painel .cartao > p {
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.ficha-cliente ul {
+  padding-left: 20px;
+}
+.ficha-cliente li {
+  padding: 6px 0;
+}
+.opcao-rede {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #5d7053;
+}
+.paginacao-importacao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 24px;
+  font-size: 11px;
+  color: #707e68;
+}
+.paginacao-importacao > div {
+  display: flex;
+  gap: 8px;
+}
+.estrutura-painel .erro-campo {
+  margin-bottom: 14px;
+}
+@media (max-width: 700px) {
+  .filtros-comerciais label {
+    flex: 1 1 130px;
+    min-width: 0;
+  }
+  .filtros-comerciais input,
+  .filtros-comerciais select {
+    width: 100%;
+  }
+  .filtros-comerciais .campo-busca {
+    flex-basis: 100%;
+  }
+  .faixa-filtros {
+    padding: 16px;
+  }
+  .total-resultados {
+    margin-bottom: 12px;
+  }
+  .formulario-carga label:has(input[type='file']) {
+    padding: 16px;
+  }
+  .formulario-carga input[type='file'] {
+    font-size: 11px;
+  }
+}

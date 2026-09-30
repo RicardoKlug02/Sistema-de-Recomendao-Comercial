@@ -12,25 +12,68 @@ export default function Aplicacao() {
   const referenciaTitulo = useRef(null)
   useEffect(() => {
     let ativa = true
-    if (obterSessao()) solicitar('/auth/me').then((dados) => {
-      if (ativa) definirUsuario(dados)
-    }).catch(() => salvarSessao(null)).finally(() => { if (ativa) definirVerificando(false) })
-    const expirar = () => { definirUsuario(null); definirTela('entrar') }
+    if (obterSessao())
+      solicitar('/auth/me')
+        .then((dados) => {
+          if (ativa) definirUsuario(dados)
+        })
+        .catch(() => salvarSessao(null))
+        .finally(() => {
+          if (ativa) definirVerificando(false)
+        })
+    const expirar = () => {
+      definirUsuario(null)
+      definirTela('entrar')
+    }
     window.addEventListener('sessao-expirada', expirar)
-    return () => { ativa = false; window.removeEventListener('sessao-expirada', expirar) }
+    return () => {
+      ativa = false
+      window.removeEventListener('sessao-expirada', expirar)
+    }
   }, [])
   useEffect(() => {
     referenciaTitulo.current?.focus()
     document.title = `${usuario ? 'Painel' : 'Acesso'} | Rio Verde Representações`
   }, [tela, usuario])
-  function sair() { salvarSessao(null); definirUsuario(null); definirTela('entrar') }
-  if (verificando) return <main className="pagina-autenticacao"><p role="status">Verificando acesso…</p></main>
-  if (usuario) return <PainelComercial usuario={usuario} aoSair={sair} referenciaTitulo={referenciaTitulo} />
-  return <main className="pagina-autenticacao"><CartaoAutenticacao
-    titulo={tela === 'entrar' ? 'Rio Verde Representações' : 'Solicitar acesso'}
-    subtitulo={tela === 'entrar' ? 'Inteligência comercial' : 'Seu cadastro será aprovado pelo administrador'}
-    referenciaTitulo={referenciaTitulo}>
-    <FormularioAutenticacao key={tela} modo={tela} aoEntrar={definirUsuario}
-      aoNavegar={() => definirTela(tela === 'entrar' ? 'registrar' : 'entrar')} />
-  </CartaoAutenticacao></main>
+  function sair() {
+    salvarSessao(null)
+    definirUsuario(null)
+    definirTela('entrar')
+  }
+  if (verificando)
+    return (
+      <main className="pagina-autenticacao">
+        <p role="status">Verificando acesso…</p>
+      </main>
+    )
+  if (usuario)
+    return (
+      <PainelComercial
+        usuario={usuario}
+        aoSair={sair}
+        referenciaTitulo={referenciaTitulo}
+      />
+    )
+  return (
+    <main className="pagina-autenticacao">
+      <CartaoAutenticacao
+        titulo={tela === 'entrar' ? 'Acesse sua carteira.' : 'Solicitar acesso'}
+        subtitulo={
+          tela === 'entrar'
+            ? 'Informação para transformar sua próxima conversa.'
+            : 'Seu cadastro será aprovado pelo administrador'
+        }
+        referenciaTitulo={referenciaTitulo}
+      >
+        <FormularioAutenticacao
+          key={tela}
+          modo={tela}
+          aoEntrar={definirUsuario}
+          aoNavegar={() =>
+            definirTela(tela === 'entrar' ? 'registrar' : 'entrar')
+          }
+        />
+      </CartaoAutenticacao>
+    </main>
+  )
 }
