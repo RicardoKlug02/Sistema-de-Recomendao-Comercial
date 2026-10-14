@@ -233,7 +233,7 @@ export default function Clientes({ inicial = null, fabricas = [] }) {
                 </Cartao>
               </div>
               <p className="nota-painel">
-                Inatividade de fábrica: 90 dias. O ciclo de reposição utiliza as
+                Restrições e substituições vigentes são aplicadas aos ciclos e às sugestões. Os valores históricos são preservados. Inatividade de fábrica: 90 dias. O ciclo de reposição utiliza as
                 datas de compra do histórico.
               </p>
             </>

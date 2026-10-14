@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.backend.app.core.security import gerar_blind_index
 from src.backend.app.services.identidade_cliente import IdentidadeCliente
+from src.backend.app.services.regras_service import MotorRegras
 from src.backend.app.services.ritmo_compras import calcular_ritmo, comparar_produtos
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.fabrica import Fabrica
@@ -87,6 +88,8 @@ class ClienteService:
             .all()
         )
 
+        regras = MotorRegras(self.db)
+        registros_comerciais = regras.registros(registros,cliente.id,ref,consolidar=agrupar_rede)
         vendas_unicas = list({r.venda_id: r for r in registros}.values())
         ritmo = calcular_ritmo(vendas_unicas, ref)
         base_info = {
@@ -98,7 +101,7 @@ class ClienteService:
             "grupo_economico": cliente.grupo_economico,
             "clientes_agrupados": len(cliente_ids),
             "ritmo_compras": ritmo,
-            "comparacao_produtos": comparar_produtos(registros, ref, ritmo["historico_suficiente"]),
+            "comparacao_produtos": comparar_produtos(registros_comerciais, ref, ritmo["historico_suficiente"]),
             "valor_comprado": round(sum({r.venda_id: r.valor_total for r in registros}.values()), 2),
             "pedidos_emitidos": len({r.venda_id for r in registros}),
         }
@@ -115,6 +118,7 @@ class ClienteService:
             }
 
         recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10, fabrica_id=fabrica_id)
+        recomendacoes = [r for r in recomendacoes if not regras.bloqueada(cliente.id,r['fabrica_id'],ref,consolidar=agrupar_rede)]
         compradas = {r.fabrica_id for r in registros}
         sugestoes_fabricas = {}
         for sugestao in recomendacoes:
@@ -125,9 +129,9 @@ class ClienteService:
         return {
             **base_info,
             "sugestoes_fabricas": list(sugestoes_fabricas.values()),
-            "resumo_fabricas": self._analisar_fabricas(registros, ref),
-            "sugestoes_reposicao": self._analisar_reposicao(registros, ref),
-            "produtos_em_abandono": self._analisar_produtos_abandono(registros, ref),
+            "resumo_fabricas": self._analisar_fabricas(registros_comerciais, ref),
+            "sugestoes_reposicao": self._analisar_reposicao(registros_comerciais, ref),
+            "produtos_em_abandono": self._analisar_produtos_abandono(registros_comerciais, ref),
             "performance_yoy": self._analisar_yoy(registros, ref),
             "sugestoes_expansao_mix": (
                 recomendacoes[:4]

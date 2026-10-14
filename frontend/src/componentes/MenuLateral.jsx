@@ -7,6 +7,7 @@ const itens = [
   ['alertas', 'Alertas'],
   ['relatorios', 'Relatórios'],
   ['analise', 'Análise do sistema'],
+  ['regras', 'Regras de negócio'],
   ['importacoes', 'Importação'],
   ['usuarios', 'Usuários'],
 ]

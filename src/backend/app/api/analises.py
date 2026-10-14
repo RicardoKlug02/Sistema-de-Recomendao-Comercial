@@ -29,9 +29,9 @@ def relatorio(tipo: Tipo, inicio: date | None = None, fim: date | None = None,
               vendedor_id: int | None = None, fabrica_id: int | None = None, rede: str | None = None,
               status: Literal['Ativo','Inativo','Sem compra'] | None = None, codigo: str | None = None,
               escopo: Literal['cliente','fabrica'] = 'cliente', pagina: int = Query(1,ge=1),
-              limite: int = Query(50,ge=1,le=200), db: Session = Depends(get_db)):
+              limite: int = Query(50,ge=1,le=200), incluir_sem_compra: bool = False, db: Session = Depends(get_db)):
     fim=fim or hoje_comercial();inicio=inicio or fim-timedelta(days=29)
-    dados=servico(db,inicio,fim,vendedor_id,fabrica_id,rede).relatorio(tipo,status,codigo,escopo)
+    dados=servico(db,inicio,fim,vendedor_id,fabrica_id,rede).relatorio(tipo,status,codigo,escopo,incluir_sem_compra)
     pos=(pagina-1)*limite
     return {**dados,'linhas':dados['linhas'][pos:pos+limite]}
 
@@ -40,10 +40,10 @@ def relatorio(tipo: Tipo, inicio: date | None = None, fim: date | None = None,
 def relatorio_pdf(tipo: Tipo, inicio: date | None = None, fim: date | None = None,
                   vendedor_id: int | None = None, fabrica_id: int | None = None, rede: str | None = None,
                   status: Literal['Ativo','Inativo','Sem compra'] | None = None, codigo: str | None = None,
-                  escopo: Literal['cliente','fabrica'] = 'cliente', db: Session = Depends(get_db)):
+                  escopo: Literal['cliente','fabrica'] = 'cliente', incluir_sem_compra: bool = False, db: Session = Depends(get_db)):
     from src.backend.app.services.pdf_service import pdf_tabela
     fim=fim or hoje_comercial();inicio=inicio or fim-timedelta(days=29)
-    dados=servico(db,inicio,fim,vendedor_id,fabrica_id,rede).relatorio(tipo,status,codigo,escopo)
+    dados=servico(db,inicio,fim,vendedor_id,fabrica_id,rede).relatorio(tipo,status,codigo,escopo,incluir_sem_compra)
     if dados['total']>5000:
         raise HTTPException(422,'O PDF excede 5.000 linhas. Selecione fábrica, rede, vendedor ou um período menor. A consulta na tela permanece completa e paginada.')
     return Response(pdf_tabela(dados),media_type='application/pdf',headers={

@@ -1,4 +1,5 @@
 const desenhos = {
+  regras: 'M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6',
   analise: 'M3 3v18h18M7 14l4-4 4 2 5-7',
   relatorios: 'M6 3h9l3 3v15H6zM14 3v5h4M9 12h6M9 16h6',
   alertas: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',

@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from src.backend.app.models.fabrica import Fabrica
+from src.backend.app.services.regras_service import MotorRegras
 
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.item_venda import ItemVenda
@@ -68,7 +69,8 @@ class ColaborativoService:
         if not grupo_alvo:
             return []
 
-        perfis = self._carregar_perfis_consumo()
+        motor = MotorRegras(self.db)
+        perfis = {grupo:motor.perfil(perfil,cliente_id) for grupo,perfil in self._carregar_perfis_consumo().items()}
         if grupo_alvo not in perfis:
             return []
 
@@ -100,7 +102,8 @@ class ColaborativoService:
         if not grupo_alvo:
             return []
 
-        perfis = self._carregar_perfis_consumo()
+        motor = MotorRegras(self.db)
+        perfis = {grupo:motor.perfil(perfil,cliente_id) for grupo,perfil in self._carregar_perfis_consumo().items()}
         if grupo_alvo not in perfis or len(perfis) < 2:
             return []
 

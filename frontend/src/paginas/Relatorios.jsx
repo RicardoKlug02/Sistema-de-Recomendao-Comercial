@@ -27,6 +27,7 @@ function RelatorioOperacional({ tipo, fabricas, vendedores }) {
   const [inicio, setInicio] = useState(tipo === 'reativacoes' ? '2026-09-29' : diasAtras(29))
   const [fim, setFim] = useState(dataLocal())
   const [status, setStatus] = useState('')
+  const [incluirSemCompra, setIncluirSemCompra] = useState(false)
   const [codigo, setCodigo] = useState('')
   const [buscaCodigo, setBuscaCodigo] = useState('')
   const [escopo, setEscopo] = useState('cliente')
@@ -40,6 +41,7 @@ function RelatorioOperacional({ tipo, fabricas, vendedores }) {
   if (vendedor) parametros.set('vendedor_id', vendedor)
   if (rede) parametros.set('rede', rede)
   if (status) parametros.set('status', status)
+  if (tipo === 'mapa' && incluirSemCompra) parametros.set('incluir_sem_compra', 'true')
   if (codigo) parametros.set('codigo', codigo)
   if (tipo === 'reativacoes') parametros.set('escopo', escopo)
   const valido = fim && fim <= dataLocal() && (posicao || inicio && inicio <= fim)
@@ -63,9 +65,14 @@ function RelatorioOperacional({ tipo, fabricas, vendedores }) {
       <FiltroFabrica fabricas={fabricas} valor={fabrica} disabled={baixando} aoMudar={(v) => mudar(setFabrica, v)} />
       <label>Vendedor<select aria-label="Vendedor" value={vendedor} disabled={baixando} onChange={(e) => mudar(setVendedor, e.target.value)}><option value="">Toda a equipe</option>{vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}</select></label>
       <label>Rede<select aria-label="Rede" value={rede} disabled={baixando} onChange={(e) => mudar(setRede, e.target.value)}><option value="">Todas as redes</option>{redes.dados?.map((r) => <option key={r.nome}>{r.nome}</option>)}</select></label>
-      {tipo === 'mapa' && <label>Situação<select value={status} aria-label="Situação" disabled={baixando} onChange={(e) => mudar(setStatus, e.target.value)}><option value="">Todas</option>{['Ativo', 'Inativo', 'Sem compra'].map((s) => <option key={s}>{s}</option>)}</select></label>}
+      {tipo === 'mapa' && <label>Situação<select value={status} aria-label="Situação" disabled={baixando} onChange={(e) => mudar(setStatus, e.target.value)}><option value="">Todas</option>{['Ativo', 'Inativo', ...(incluirSemCompra ? ['Sem compra'] : [])].map((s) => <option key={s}>{s}</option>)}</select></label>}
       {tipo === 'reativacoes' && <label>Tipo de reativação<select aria-label="Tipo de reativação" value={escopo} disabled={baixando} onChange={(e) => mudar(setEscopo, e.target.value)}><option value="cliente">Cliente no escritório</option><option value="fabrica">Cliente x fábrica</option></select></label>}
     </div>
+    {tipo === 'mapa' && <label className="opcao-rede"><input type="checkbox" checked={incluirSemCompra} disabled={baixando} onChange={(e) => { mudar(setIncluirSemCompra, e.target.checked); if (!e.target.checked && status === 'Sem compra') setStatus('') }} /> Incluir fábricas em que o cliente nunca comprou</label>}
+    {tipo === 'reativacoes' && <div className="nota-painel">
+      <p>Este relatório acompanha quem voltou a comprar após pelo menos 90 dias sem compra. O período seleciona a data desse retorno.</p>
+      <p><strong>Nº pedido de retorno</strong> identifica o pedido da volta. <strong>Valor do retorno</strong> mostra quanto ele comprou nesse pedido. <strong>Qtde. após retorno</strong> conta os pedidos seguintes e <strong>Valor após retorno</strong> soma somente essas compras seguintes.</p>
+    </div>}
     {tipo === 'precos' && <form className="filtros-comerciais" onSubmit={(e) => { e.preventDefault(); mudar(setCodigo, buscaCodigo.trim()) }}><label>Código exato<input value={buscaCodigo} onChange={(e) => setBuscaCodigo(e.target.value)} placeholder="Todos os códigos" /></label><button className="botao-secundario" disabled={baixando}>Filtrar código</button></form>}
     {!valido && <p role="alert">Informe datas válidas, com data final até hoje.</p>}
     <EstadoConsulta carregando={resposta.carregando || redes.carregando} erro={erro || resposta.erro || redes.erro} />

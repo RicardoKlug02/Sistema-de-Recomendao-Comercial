@@ -1,4 +1,5 @@
 from collections import defaultdict
+from types import SimpleNamespace
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 from sqlalchemy import func
@@ -8,6 +9,7 @@ from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.item_venda import ItemVenda
 from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
+from src.backend.app.services.regras_service import MotorRegras
 
 
 class RecompraService:
@@ -45,6 +47,7 @@ class RecompraService:
                 Cliente.cnpj_cpf,
                 Produto.id.label("produto_id"),
                 Produto.sku,
+                Produto.fabrica_id,
                 Produto.nome.label("produto_nome"),
                 Venda.data_venda,
                 ItemVenda.quantidade,
@@ -58,8 +61,14 @@ class RecompraService:
 
         agrupamento = defaultdict(lambda: {"datas": set(), "quantidades": [], "meta": None})
 
+        motor = MotorRegras(self.db)
         for r in registros:
-            grupo_chave = (r.grupo_economico or r.cnpj_cpf, r.produto_id)
+            if r.data_venda > ref or motor.bloqueada(r.cliente_id,r.fabrica_id,ref):
+                continue
+            pid = motor.produto(r.produto_id,r.cliente_id,ref)
+            p = motor.produtos[pid]
+            r = SimpleNamespace(**{**r._mapping,'produto_id':pid,'sku':p.sku,'produto_nome':p.nome})
+            grupo_chave = (motor.identidade.id(r.cliente_id),pid)
             agrupamento[grupo_chave]["datas"].add(r.data_venda)
             agrupamento[grupo_chave]["quantidades"].append(r.quantidade)
             if not agrupamento[grupo_chave]["meta"]:
@@ -127,6 +136,7 @@ class RecompraService:
             self.db.query(
                 Produto.id.label("produto_id"),
                 Produto.sku,
+                Produto.fabrica_id,
                 Produto.nome.label("produto_nome"),
                 Venda.data_venda,
                 ItemVenda.quantidade,
@@ -140,7 +150,13 @@ class RecompraService:
         )
 
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "compras": []})
+        motor = MotorRegras(self.db)
         for r in registros:
+            if motor.bloqueada(cliente_id,r.fabrica_id,ref):
+                continue
+            pid = motor.produto(r.produto_id,cliente_id,ref)
+            p = motor.produtos[pid]
+            r = SimpleNamespace(**{**r._mapping,'produto_id':pid,'sku':p.sku,'produto_nome':p.nome})
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
             produtos_map[r.produto_id]["compras"].append((r.data_venda, r.quantidade))

@@ -6,6 +6,7 @@ import Usuarios from './Usuarios'
 import VisaoGeral from './VisaoGeral'
 import Relatorios from './Relatorios'
 import AnaliseSistema from './AnaliseSistema'
+import RegrasNegocio from './RegrasNegocio'
 import MenuLateral from '../componentes/MenuLateral'
 import useDados from '../servicos/useDados'
 import './PainelComercial.css'
@@ -19,6 +20,7 @@ const secoes = {
   usuarios: 'Usuários',
   relatorios: 'Relatórios',
   analise: 'Análise do sistema',
+  regras: 'Regras de negócio',
 }
 
 // O shell coordena navegação e invalidação das consultas após uma importação confirmada.
@@ -99,6 +101,7 @@ export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
       )}
       {secao === 'usuarios' && gestor && <Usuarios />}
       {secao === 'relatorios' && <Relatorios fabricas={cadastroFabricas.dados || []} vendedores={cadastroVendedores.dados || []} />}
+      {secao === 'regras' && <RegrasNegocio fabricas={cadastroFabricas.dados || []} vendedores={cadastroVendedores.dados || []} gestor={gestor} aoAlterar={atualizar} />}
       {secao === 'analise' && <AnaliseSistema fabricas={cadastroFabricas.dados || []} vendedores={cadastroVendedores.dados || []} />}
     </div>
   )

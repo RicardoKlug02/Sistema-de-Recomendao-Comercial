@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from src.backend.app.api.deps import get_db, get_usuario_atual
 from src.backend.app.models.usuario import Usuario
+from src.backend.app.models.cliente import Cliente
 from src.backend.app.schemas.cliente import ClienteOptionOut, ClienteDetalhesOut
 from src.backend.app.services.associacao_service import AssociacaoService
 from src.backend.app.services.cliente_service import ClienteService
@@ -38,12 +39,15 @@ def obter_alertas_dashboard(
 def obter_cross_selling(
     produtos_ids: List[int],
     top_n: int = Query(4, ge=1, le=10),
+    cliente_id: int | None = None,
     db: Session = Depends(get_db),
     _: Usuario = Depends(get_usuario_atual),
 ):
     """Sugestão instantânea de venda casada para itens incluídos em cotações/carrinhos."""
+    if cliente_id is not None and db.get(Cliente,cliente_id) is None:
+        raise HTTPException(404,'Cliente não encontrado.')
     service = AssociacaoService(db_session=db)
-    return service.recomendar_cross_selling(produto_ids=produtos_ids, top_n=top_n)
+    return service.recomendar_cross_selling(produto_ids=produtos_ids, top_n=top_n, cliente_id=cliente_id)
 
 
 @router.get("/{cliente_id}", response_model=ClienteDetalhesOut)

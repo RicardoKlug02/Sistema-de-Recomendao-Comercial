@@ -6,6 +6,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 from src.backend.app.services.identidade_cliente import IdentidadeCliente
+from src.backend.app.services.regras_service import MotorRegras
 from src.backend.app.models import Cliente, Fabrica, Venda, Vendedor, Produto, ItemVenda
 
 
@@ -89,6 +90,8 @@ class ComercialService:
         ref = hoje_comercial()
         vendas = self.db.query(Venda.id, Venda.cliente_id, Venda.fabrica_id, Venda.data_venda, Venda.vendedor_id).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
         vendas = [SimpleNamespace(**{**v._mapping, "cliente_id": self.identidade.id(v.cliente_id)}) for v in vendas]
+        regras = MotorRegras(self.db,self.identidade)
+        vendas = [v for v in vendas if not regras.bloqueada(v.cliente_id,v.fabrica_id,ref)]
         atendidos_fabrica = {v.cliente_id for v in vendas if v.fabrica_id == fabrica_id}
         fabricas = {f.id: f for f in self.db.query(Fabrica).all()}
         por_cliente, por_fabrica, por_produto = defaultdict(list), defaultdict(list), defaultdict(dict)
@@ -100,7 +103,13 @@ class ComercialService:
                  .join(Produto, Produto.id == ItemVenda.produto_id).filter(Venda.data_venda <= ref,
                      *([Produto.fabrica_id == fabrica_id] if fabrica_id is not None else [])).distinct().order_by(Venda.data_venda, Venda.id).all())
         for r in itens:
-            por_produto[(self.identidade.id(r.cliente_id), r.produto_id)][r.data_venda] = r
+            cid = self.identidade.id(r.cliente_id)
+            if regras.bloqueada(cid,r.fabrica_id,ref):
+                continue
+            pid = regras.produto(r.produto_id,cid,ref)
+            p = regras.produtos[pid] if pid != r.produto_id else r
+            meta = SimpleNamespace(**{**r._mapping,'produto_id':pid,'sku':p.sku,'nome':p.nome})
+            por_produto[(cid,pid)][r.data_venda] = meta
         resultado = []
         filtro_fabrica = fabrica_id
         def adicionar(tipo, cliente_id, descricao, dias, prioridade, venda, fabrica_id=None, produto_id=None):

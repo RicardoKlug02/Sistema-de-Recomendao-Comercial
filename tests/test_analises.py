@@ -121,6 +121,16 @@ def test_mapa_fabrica_mostra_cliente_que_nunca_comprou_nela(db_session,historico
     assert all(r['status']=='Sem compra' and r['ultima'] is None for r in d['linhas'])
 
 
+def test_mapa_padrao_somente_relacoes_com_compra_sem_excluir_inativas(db_session,historico):
+    s=AnaliseService(db_session,BASE,FIM)
+    padrao=s.relatorio('mapa')
+    completo=s.relatorio('mapa',incluir_sem_compra=True)
+    assert padrao['total']==5 and completo['total']==8
+    assert all(r['ultima'] is not None and r['status']!='Sem compra' for r in padrao['linhas'])
+    historico_anterior=AnaliseService(db_session,date(2026,9,1),date(2026,9,28)).relatorio('mapa')
+    assert len([r for r in historico_anterior['linhas'] if r['status']=='Inativo'])==2
+
+
 def test_inatividade_historica_nao_usa_compras_posteriores(db_session,historico):
     d=AnaliseService(db_session,date(2026,9,1),date(2026,9,28)).relatorio('inativos')
     assert {r['cliente'] for r in d['linhas']}=={'Recuperado','Sem confirmação'}
@@ -152,6 +162,13 @@ def test_resultado_reativacao_cliente_diferente_de_fabrica(db_session,historico)
     fabrica=next(r for r in s.relatorio('reativacoes',escopo='fabrica')['linhas'] if r['cliente']=='Recuperado')
     assert global_['novos_pedidos']==1 and global_['valor_posterior']==37
     assert fabrica['novos_pedidos']==0 and fabrica['valor_posterior']==12
+    assert global_['pedido_retorno']=='8' and global_['valor_retorno']==12
+    assert global_['valor_apos_retorno']==25
+    assert fabrica['valor_apos_retorno']==0
+    colunas={c['chave']:c for c in s.relatorio('reativacoes')['colunas']}
+    assert colunas['pedido_retorno']['formato']=='texto'
+    assert colunas['novos_pedidos']['formato']=='numero'
+    assert colunas['valor_apos_retorno']['formato']=='moeda'
 
 
 def test_reativacoes_repetidas_nao_duplicam_faturamento(db_session,historico):
@@ -181,3 +198,6 @@ def test_api_analises_paginacao_pdf_e_periodos_invalidos(client,token_admin,hist
         assert pdf.status_code==200,pdf.text if pdf.status_code!=200 else ''
         assert pdf.content.startswith(b'%PDF')
     assert client.get('/api/v1/analises/relatorios/inventado',headers=h).status_code==422
+    mapa='/api/v1/analises/relatorios/mapa?inicio=2026-09-29&fim=2026-10-13'
+    assert client.get(mapa,headers=h).json()['total']==5
+    assert client.get(mapa+'&incluir_sem_compra=true',headers=h).json()['total']==8

@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from src.backend.app.services.datas import hoje_comercial
 from sqlalchemy import func
 from src.backend.app.services.identidade_cliente import IdentidadeCliente
+from src.backend.app.services.regras_service import MotorRegras
 from src.backend.app.models import Cliente, Fabrica, Venda, Produto, ItemVenda, Vendedor
 
 
@@ -19,9 +20,10 @@ class AnaliseService:
         self.db, self.inicio, self.fim = db, inicio, fim
         self.vendedor_id, self.fabrica_id, self.rede = vendedor_id, fabrica_id, rede
         self.identidade = IdentidadeCliente(db)
+        self.regras = MotorRegras(db,self.identidade)
         self.rede_ids = [cid for cid,c in self.identidade.clientes.items()
                          if (c.grupo_economico or '').strip().casefold() == (rede or '').strip().casefold()]
-        q = db.query(Venda.id, Venda.cliente_id, Venda.fabrica_id, Venda.vendedor_id, Venda.data_venda, Venda.valor_total).filter(Venda.data_venda <= fim)
+        q = db.query(Venda.id, Venda.cliente_id, Venda.fabrica_id, Venda.vendedor_id, Venda.data_venda, Venda.valor_total, Venda.numero_pedido).filter(Venda.data_venda <= fim)
         if rede:
             q = q.filter(Venda.cliente_id.in_(self.rede_ids))
         registros = q.order_by(Venda.data_venda, Venda.id).all()
@@ -40,9 +42,10 @@ class AnaliseService:
             self._clientes = {cid: self.identidade.clientes[cid] for cid in ids}
         return self._clientes
 
-    def escopo(self, referencia=None):
+    def escopo(self, referencia=None, aplicar_regras=True):
         return [v for v in self.vendas if (referencia is None or v.data_venda <= referencia)
-                and (self.fabrica_id is None or v.fabrica_id == self.fabrica_id)]
+                and (self.fabrica_id is None or v.fabrica_id == self.fabrica_id)
+                and (not aplicar_regras or not self.regras.bloqueada(v.cliente_id,v.fabrica_id,referencia or self.fim))]
 
     def ultimos(self, referencia):
         return {v.cliente_id: v for v in self.escopo(referencia)}
@@ -78,7 +81,7 @@ class AnaliseService:
         # Materializa a identidade em subconsulta: PostgreSQL com parâmetros posicionais
         # não reconhece CASE repetido no SELECT/GROUP BY como a mesma expressão.
         q = (self.db.query(self.identidade.expressao().label('comercial_id'),
-             ItemVenda.produto_id, Venda.fabrica_id, Venda.data_venda)
+             self.regras.produto_sql(Venda.cliente_id,referencia).label("produto_id"), Venda.fabrica_id, Venda.data_venda)
              .join(ItemVenda, ItemVenda.venda_id == Venda.id).filter(Venda.data_venda <= referencia))
         if self.fabrica_id is not None:
             q = q.filter(Venda.fabrica_id == self.fabrica_id)
@@ -90,7 +93,7 @@ class AnaliseService:
                      func.count(func.distinct(base.c.data_venda)))
                      .group_by(base.c.comercial_id, base.c.produto_id, base.c.fabrica_id))
         resultado = {(r[0],r[1]): {'fabrica_id':r[2], 'primeira':r[3], 'ultima':r[4], 'datas':r[5]}
-                     for r in registros}
+                     for r in registros if not self.regras.bloqueada(r[0],r[2],referencia)}
         self._produtos_cache[referencia] = resultado
         return resultado
 
@@ -105,7 +108,9 @@ class AnaliseService:
             if v.id in sem_itens_ids:
                 desconhecidos[(v.cliente_id,v.fabrica_id)] = v.data_venda
         conhecidos = self.produtos_posicao(referencia)
-        pool = produtos if produtos is not None else {p for p in conhecidos if p[0] in carteira}
+        pool_original = produtos if produtos is not None else {p for p in conhecidos if p[0] in carteira}
+        pool = {(cid,self.regras.produto(pid,cid,referencia)) for cid,pid in pool_original
+                if not self.regras.bloqueada(cid,self.regras.produtos[pid].fabrica_id,referencia)}
         itens_inativos = itens_incerto = 0
         for chave in pool:
             r = conhecidos.get(chave)
@@ -155,10 +160,10 @@ class AnaliseService:
                 'novos_clientes':novos,'historico_desde':primeira.isoformat() if primeira else None,
                 'historico_90_dias':primeira is not None and primeira <= base-timedelta(days=90),
                 'criterio_itens':criterio, 'escopo':'fábrica selecionada' if self.fabrica_id else 'escritório',
-                'nota':'Cada rede conta como um cliente comercial; CNPJs sem rede contam individualmente. Comparativo observacional do histórico importado: não comprova causalidade do sistema. A carteira inicial permanece fixa; compras posteriores por outros vendedores também contam para sua atividade.'}
+                'nota':'Restrições e substituições vigentes na data de cada posição são aplicadas aos indicadores de atividade; mudanças nas regras também podem alterar o comparativo. Cada rede conta como um cliente comercial; CNPJs sem rede contam individualmente. Comparativo observacional do histórico importado: não comprova causalidade do sistema. A carteira inicial permanece fixa; compras posteriores por outros vendedores também contam para sua atividade.'}
 
-    def relatorio(self,tipo,status=None,codigo=None,escopo='cliente'):
-        metodos = {'mapa':self.mapa,'reativacoes':lambda:self.reativacoes(escopo),
+    def relatorio(self,tipo,status=None,codigo=None,escopo='cliente',incluir_sem_compra=False):
+        metodos = {'mapa':lambda:self.mapa(incluir_sem_compra or status == 'Sem compra'),'reativacoes':lambda:self.reativacoes(escopo),
                    'inativos':self.inativos,'precos':lambda:self.precos(codigo),'regioes':self.regioes}
         if tipo not in metodos:
             raise ValueError('Relatório não encontrado.')
@@ -174,21 +179,29 @@ class AnaliseService:
         return {'titulo':titulo,'colunas':[{'chave':c[0],'titulo':c[1],'formato':c[2] if len(c)>2 else 'texto'} for c in colunas],
                 'linhas':linhas,'notas':['Cada rede é um cliente comercial; CNPJs sem rede são individuais. Compras de todos os CNPJs da rede compõem seu histórico.'] + notas}
 
-    def mapa(self):
+    def mapa(self,incluir_sem_compra=False):
         ultimo_global = {v.cliente_id:v for v in self.vendas}
         carteira = {cid for cid,v in ultimo_global.items() if self.vendedor_id is None or v.vendedor_id == self.vendedor_id}
         pares = {(v.cliente_id,v.fabrica_id):v for v in self.escopo()}
         fabricas = {self.fabrica_id:self.fabricas[self.fabrica_id]} if self.fabrica_id in self.fabricas else self.fabricas
+        por_cliente = defaultdict(set)
+        for cid,fid in pares:
+            por_cliente[cid].add(fid)
         linhas=[]
         for cid in sorted(carteira):
-            for fid,nome in fabricas.items():
+            ids_fabricas = sorted(fabricas if incluir_sem_compra else por_cliente[cid])
+            for fid in ids_fabricas:
+                nome = fabricas[fid]
+                if self.regras.bloqueada(cid,fid,self.fim):
+                    continue
                 v=pares.get((cid,fid)); dias=(self.fim-v.data_venda).days if v else None
                 linhas.append({'cliente':self.identidade.nome(cid),'rede':self.clientes[cid].grupo_economico or '—',
                     'fabrica':nome,'ultima':v.data_venda.isoformat() if v else None,'dias':dias,
                     'status':'Sem compra' if v is None else 'Inativo' if dias >= 90 else 'Ativo'})
         return self.tabela('Mapa cliente x fábrica',[('cliente','Cliente'),('rede','Rede'),('fabrica','Fábrica'),('ultima','Última compra','data'),('dias','Dias sem compra','numero'),('status','Situação')],linhas,
             ['Posição na data final. Ativo: última compra há menos de 90 dias; inativo: 90 dias ou mais; sem compra: nenhuma compra conhecida nesta fábrica.',
-             'Carteira do vendedor conforme a última compra do cliente no escritório. Inclui as fábricas atualmente cadastradas.'])
+             'Carteira do vendedor conforme a última compra do cliente no escritório. Fábricas com venda restrita para esse cliente na data final não aparecem.',
+             ('Inclui fábricas sem compra para identificar oportunidades de abertura.' if incluir_sem_compra else 'Mostra somente fábricas com compras conhecidas do cliente, incluindo relações hoje inativas.')])
 
     def inativos(self):
         linhas=[]
@@ -211,14 +224,24 @@ class AnaliseService:
             if not self.inicio <= v.data_venda <= self.fim: continue
             episodio=r['episodio']; c=self.clientes[v.cliente_id]
             linhas.append({'cliente':self.identidade.nome(c.id),'fabrica':self.fabricas[v.fabrica_id],'retorno':v.data_venda.isoformat(),
-                'dias':(v.data_venda-r['anterior'].data_venda).days,'valor_retorno':v.valor_total,
+                'dias':(v.data_venda-r['anterior'].data_venda).days,'pedido_retorno':v.numero_pedido,'valor_retorno':v.valor_total,
+                'valor_apos_retorno':round(sum(e.valor_total for e in episodio[1:]),2),
                 'valor_posterior':round(sum(e.valor_total for e in episodio),2),'novos_pedidos':len(episodio)-1,
                 'acompanhamento':(self.fim-v.data_venda).days,'situacao':'Com novo pedido' if len(episodio)>1 else 'Sem novo pedido até a data final'})
         linhas.sort(key=lambda r:(r['retorno'],r['cliente']),reverse=True)
-        return self.tabela('Resultado das reativações',[('cliente','Cliente'),('fabrica','Fábrica do retorno'),('retorno','Retorno','data'),('dias','Dias anteriores sem compra','numero'),('valor_retorno','Pedido de retorno','moeda'),('valor_posterior','Valor desde o retorno','moeda'),('novos_pedidos','Pedidos seguintes','numero'),('acompanhamento','Dias observados','numero'),('situacao','Resultado observado')],linhas,
+        return self.tabela('Resultado das reativações',[
+            ('cliente','Cliente'),('fabrica','Fábrica do retorno'),('retorno','Data do retorno','data'),
+            ('dias','Dias sem comprar antes','numero'),('pedido_retorno','Nº pedido de retorno'),
+            ('valor_retorno','Valor do retorno (R$)','moeda'),
+            ('novos_pedidos','Qtde. após retorno','numero'),
+            ('valor_apos_retorno','Valor após retorno (R$)','moeda'),('situacao','Continuidade')],linhas,
             [('Reativação de cliente no escritório.' if escopo=='cliente' else 'Reativação da relação cliente x fábrica.'),
-             'Retorno após pelo menos 90 dias sem compra. Primeiras compras não são reativações. O valor desde o retorno inclui o pedido de retorno e vai até a data final ou a próxima reativação, sem duplicar episódios.',
-             'O vendedor é o do pedido de retorno; os pedidos seguintes podem ser de outros vendedores. Sem novo pedido não significa insucesso: observe o tempo de acompanhamento.'])
+             'Mostra clientes que voltaram a comprar no período após pelo menos 90 dias sem compra. A primeira compra de um cliente não é reativação.',
+             'Nº pedido de retorno identifica o primeiro pedido depois da pausa. Valor do retorno é o valor desse pedido. Qtde. após retorno conta somente os pedidos seguintes; Valor após retorno soma somente esses pedidos, sem incluir a compra de retorno.',
+             'Exemplo: o cliente retorna com R$ 100 e faz mais dois pedidos de R$ 150 cada. Qtde. após retorno: 2; Valor após retorno: R$ 300. Sem pedidos seguintes, ambas as colunas ficam em zero.',
+             'Acompanhamento até a data final ou a próxima reativação, sem duplicar episódios. Sem novo pedido não significa insucesso: considere há quanto tempo o cliente retornou.',
+             ('No escopo cliente, o filtro de fábrica seleciona a fábrica do pedido de retorno; os pedidos seguintes consideram todas as fábricas do escritório.' if escopo=='cliente' else 'No escopo cliente x fábrica, os pedidos seguintes consideram somente a fábrica da relação reativada.'),
+             'O vendedor é o do pedido de retorno; os pedidos seguintes podem ser de outros vendedores.'])
 
     def precos(self,codigo):
         q=(self.db.query(Venda.cliente_id,Venda.data_venda,Venda.id.label('venda_id'),Venda.numero_pedido,Venda.vendedor_id,
@@ -243,7 +266,7 @@ class AnaliseService:
     def regioes(self):
         dias=(self.fim-self.inicio).days+1; inicio_anterior=self.inicio-timedelta(days=dias)
         regioes={}
-        for v in self.escopo():
+        for v in self.escopo(aplicar_regras=False):
             if self.vendedor_id is not None and v.vendedor_id!=self.vendedor_id:continue
             c=self.identidade.clientes[self.fiscal_por_venda[v.id]]; chave=(c.micro_regiao or 'Região não identificada',c.estado or 'UF não informada')
             r=regioes.setdefault(chave,{'regiao':chave[0],'uf':chave[1],'anterior':0,'atual':0,'clientes_antes':set(),'clientes_agora':set(),'identificada':bool(c.micro_regiao)})
