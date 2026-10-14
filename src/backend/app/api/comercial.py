@@ -5,6 +5,7 @@ from src.backend.app.api.deps import get_db, get_usuario_atual
 from src.backend.app.models import Vendedor, Cliente, Fabrica, Venda
 from src.backend.app.services.comercial_service import ComercialService
 from src.backend.app.services.cliente_service import ClienteService
+from src.backend.app.services.identidade_cliente import IdentidadeCliente
 
 router = APIRouter(prefix="/comercial", tags=["Painel e Central de Alertas"],
                    dependencies=[Depends(get_usuario_atual)])
@@ -51,12 +52,21 @@ def fabricas(db: Session = Depends(get_db)):
 def clientes(termo: str = "", pagina: int = Query(1, ge=1), limite: int = Query(30, ge=1, le=100),
              fabrica_id: Optional[int] = None, db: Session = Depends(get_db)):
     inicio = (pagina - 1) * limite
+    identidade = IdentidadeCliente(db)
     if termo.strip():
-        registros = ClienteService(db).buscar_por_termo(termo, limite=None, fabrica_id=fabrica_id)
-        return {"total": len(registros), "itens": registros[inicio:inicio + limite]}
-    query = db.query(Cliente).order_by(Cliente.id)
+        encontrados = ClienteService(db).buscar_por_termo(termo, limite=None)
+        ids = {identidade.id(c['id']) for c in encontrados}
+    else:
+        query = db.query(Cliente.id)
+        if fabrica_id is not None:
+            query = query.filter(db.query(Venda.id).filter(Venda.cliente_id == Cliente.id, Venda.fabrica_id == fabrica_id).exists())
+        ids = {identidade.id(c.id) for c in query}
     if fabrica_id is not None:
-        query = query.filter(db.query(Venda.id).filter(Venda.cliente_id == Cliente.id, Venda.fabrica_id == fabrica_id).exists())
-    return {"total": query.count(), "itens": [{"id": c.id, "razao_social": c.razao_social,
-            "cidade": c.cidade, "estado": c.estado, "grupo_economico": c.grupo_economico}
-            for c in query.offset(inicio).limit(limite).all()]}
+        compradores = {identidade.id(v.cliente_id) for v in db.query(Venda.cliente_id).filter(Venda.fabrica_id == fabrica_id).distinct()}
+        ids &= compradores
+    escolhidos = sorted(ids)[inicio:inicio + limite]
+    fiscais = {c.id: c for c in db.query(Cliente).filter(Cliente.id.in_(escolhidos))}
+    return {"total": len(ids), "itens": [{"id": cid, "razao_social": identidade.nome(cid),
+            "cidade": fiscais[cid].cidade, "estado": fiscais[cid].estado,
+            "grupo_economico": fiscais[cid].grupo_economico,
+            "cadastros_fiscais": len(identidade.fiscais(cid))} for cid in escolhidos]}

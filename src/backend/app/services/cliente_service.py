@@ -1,3 +1,4 @@
+from src.backend.app.services.datas import hoje_comercial
 from collections import defaultdict
 from datetime import date
 import re
@@ -7,6 +8,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.backend.app.core.security import gerar_blind_index
+from src.backend.app.services.identidade_cliente import IdentidadeCliente
 from src.backend.app.services.ritmo_compras import calcular_ritmo, comparar_produtos
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.fabrica import Fabrica
@@ -51,10 +53,10 @@ class ClienteService:
 
 
     def obter_dossie_cliente(
-        self, cliente_id: int, ref_date: Optional[date] = None, agrupar_rede: bool = False, fabrica_id: Optional[int] = None
+        self, cliente_id: int, ref_date: Optional[date] = None, agrupar_rede: bool = True, fabrica_id: Optional[int] = None
     ) -> Optional[Dict[str, Any]]:
         """Dossiê analítico 360: histórico, ciclo de fábrica, reposição, abandono e YoY."""
-        ref = ref_date or date.today()
+        ref = ref_date or hoje_comercial()
 
         cliente = self.db.query(Cliente).filter(Cliente.id == cliente_id).first()
         if not cliente:
@@ -62,7 +64,7 @@ class ClienteService:
 
         cliente_ids = [cliente.id]
         if agrupar_rede and cliente.grupo_economico:
-            cliente_ids = [c.id for c in self.db.query(Cliente.id).filter(Cliente.grupo_economico == cliente.grupo_economico)]
+            cliente_ids = IdentidadeCliente(self.db).fiscais(cliente.id)
 
         registros = (
             self.db.query(
@@ -89,7 +91,8 @@ class ClienteService:
         ritmo = calcular_ritmo(vendas_unicas, ref)
         base_info = {
             "cliente_id": cliente.id,
-            "razao_social": cliente.razao_social,
+            "razao_social": (cliente.grupo_economico or cliente.razao_social) if agrupar_rede else cliente.razao_social,
+            "cadastros_fiscais": [{"id": c.id, "razao_social": c.razao_social, "cnpj_cpf": c.cnpj_cpf} for c in self.db.query(Cliente).filter(Cliente.id.in_(cliente_ids)).order_by(Cliente.id)],
             "cnpj_cpf": cliente.cnpj_cpf,
             "micro_regiao": cliente.micro_regiao,
             "grupo_economico": cliente.grupo_economico,

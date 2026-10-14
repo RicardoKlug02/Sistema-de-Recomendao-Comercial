@@ -105,7 +105,7 @@ def test_dossie_agrupa_rede_incluindo_pedidos_sem_itens(db_session):
     cab.loc[1, "cliente"] = "Filial Beta"
     service._validar_e_salvar(cab, itens())
     cid = db_session.query(Cliente).order_by(Cliente.id).first().id
-    assert ClienteService(db_session).obter_dossie_cliente(cid)["valor_comprado"] == 100
+    assert ClienteService(db_session).obter_dossie_cliente(cid, agrupar_rede=False)["valor_comprado"] == 100
     rede = ClienteService(db_session).obter_dossie_cliente(cid, agrupar_rede=True)
     assert rede["valor_comprado"] == 300
     assert rede["clientes_agrupados"] == 2

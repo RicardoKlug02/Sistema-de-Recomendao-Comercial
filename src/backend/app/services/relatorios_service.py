@@ -1,6 +1,8 @@
+from src.backend.app.services.datas import hoje_comercial
 """Última compra de cada código na rede, sem misturar preços de fábricas distintas."""
 from datetime import date
 from sqlalchemy import func
+from src.backend.app.services.identidade_cliente import IdentidadeCliente
 from src.backend.app.models import Cliente, Fabrica, Venda, Produto, ItemVenda
 
 
@@ -9,20 +11,25 @@ class RelatoriosService:
         self.db = db
 
     def redes(self):
-        return [{"nome": nome, "clientes": quantidade} for nome, quantidade in
-                self.db.query(Cliente.grupo_economico, func.count(Cliente.id))
-                .filter(Cliente.grupo_economico.isnot(None), func.trim(Cliente.grupo_economico) != "")
-                .group_by(Cliente.grupo_economico).order_by(Cliente.grupo_economico)]
+        identidade = IdentidadeCliente(self.db)
+        grupos = {}
+        for cid,c in identidade.clientes.items():
+            if (c.grupo_economico or '').strip():
+                grupo = identidade.id(cid)
+                grupos.setdefault(grupo, {"nome": identidade.nome(cid), "clientes": 0})["clientes"] += 1
+        return sorted(grupos.values(), key=lambda r:r['nome'].casefold())
 
     def produtos_rede(self, rede, fabrica_id=None):
-        clientes = self.db.query(Cliente.id).filter(Cliente.grupo_economico == rede)
-        quantidade_clientes = clientes.count()
+        identidade = IdentidadeCliente(self.db)
+        clientes = [cid for cid,c in identidade.clientes.items()
+                    if (c.grupo_economico or '').strip().casefold() == rede.strip().casefold()]
+        quantidade_clientes = len(clientes)
         if not quantidade_clientes:
             raise ValueError("Rede não encontrada. Confira o cadastro de Rede de clientes nas planilhas.")
         fabrica = self.db.get(Fabrica, fabrica_id) if fabrica_id is not None else None
         if fabrica_id is not None and not fabrica:
             raise ValueError("Fábrica não encontrada.")
-        vendas = self.db.query(Venda).filter(Venda.cliente_id.in_(clientes), Venda.data_venda <= date.today())
+        vendas = self.db.query(Venda).filter(Venda.cliente_id.in_(clientes), Venda.data_venda <= hoje_comercial())
         if fabrica_id is not None:
             vendas = vendas.filter(Venda.fabrica_id == fabrica_id)
         ordenados = (self.db.query(ItemVenda.produto_id, ItemVenda.preco_unitario,

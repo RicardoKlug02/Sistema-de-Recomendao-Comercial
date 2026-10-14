@@ -1,18 +1,24 @@
+from src.backend.app.services.datas import hoje_comercial
 """Indicadores e alertas calculados a partir das vendas, incluindo pedidos sem itens."""
 from collections import defaultdict
+from types import SimpleNamespace
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
+from src.backend.app.services.identidade_cliente import IdentidadeCliente
 from src.backend.app.models import Cliente, Fabrica, Venda, Vendedor, Produto, ItemVenda
 
 
 class ComercialService:
     def __init__(self, db):
         self.db = db
+        self.identidade = IdentidadeCliente(db)
 
     def painel(self, mes=None, vendedor_id=None, fabrica_id=None):
-        ref = date.today()
+        ref = hoje_comercial()
         todas = self.db.query(Venda.id, Venda.data_venda, Venda.cliente_id, Venda.fabrica_id, Venda.vendedor_id, Venda.valor_total).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
+        fiscal_por_venda = {v.id: v.cliente_id for v in todas}
+        todas = [SimpleNamespace(**{**v._mapping, "cliente_id": self.identidade.id(v.cliente_id)}) for v in todas]
         mes = mes or (todas[-1].data_venda.strftime("%Y-%m") if todas else ref.strftime("%Y-%m"))
         inicio = date.fromisoformat(mes + "-01")
         fim = inicio + relativedelta(months=1)
@@ -20,7 +26,7 @@ class ComercialService:
                   (vendedor_id is None or v.vendedor_id == vendedor_id) and (fabrica_id is None or v.fabrica_id == fabrica_id)]
         anteriores = [v for v in todas if inicio - relativedelta(months=1) <= v.data_venda < inicio and
                       (vendedor_id is None or v.vendedor_id == vendedor_id) and (fabrica_id is None or v.fabrica_id == fabrica_id)]
-        clientes = {c.id: c for c in self.db.query(Cliente.id, Cliente.razao_social, Cliente.micro_regiao, Cliente.estado).filter(Cliente.id.in_({v.cliente_id for v in vendas}))}
+        clientes = self.identidade.clientes
         fabricas = {f.id: f for f in self.db.query(Fabrica).all()}
         primeira, primeira_fabrica, ultima, reativados = {}, {}, {}, set()
         ids_vendas = {v.id for v in vendas}
@@ -46,7 +52,7 @@ class ComercialService:
             fat_anteriores[v.fabrica_id] += v.valor_total
         regioes = defaultdict(float)
         for v in vendas:
-            c = clientes[v.cliente_id]
+            c = clientes[fiscal_por_venda[v.id]]
             regioes[(c.micro_regiao or "Região não identificada", c.estado or "UF não informada")] += v.valor_total
         produtos = []
         if vendas:
@@ -66,23 +72,23 @@ class ComercialService:
             "clientes_reativados": len(reativados),
             "pedidos_sem_itens": sum(v.id not in ids_com_itens for v in vendas)},
             "faturamento_mensal": [{"mes": m, "valor": round(mensal[m], 2)} for m in meses],
-            "clientes": [{"id": c, "nome": clientes[c].razao_social, "valor": round(valor, 2)}
+            "clientes": [{"id": c, "nome": self.identidade.nome(c), "valor": round(valor, 2)}
                          for c, valor in sorted(fat_clientes.items(), key=lambda p: p[1], reverse=True)[:5]],
             "fabricas": [{"id": f, "nome": fabricas[f].nome_fantasia, "valor": round(valor, 2),
                           "variacao_pct": round((valor / fat_anteriores[f] - 1) * 100, 1) if fat_anteriores[f] else None}
                          for f, valor in sorted(fat_fabricas.items(), key=lambda p: p[1], reverse=True)[:10]],
             "produtos": produtos,
             "regioes": [{"nome": r, "uf": uf, "valor": round(valor, 2)} for (r, uf), valor in sorted(regioes.items(), key=lambda p: p[1], reverse=True)],
-            "aberturas": [{"cliente_id": v.cliente_id, "cliente": clientes[v.cliente_id].razao_social,
+            "aberturas": [{"cliente_id": v.cliente_id, "cliente": self.identidade.nome(v.cliente_id),
                            "fabrica": fabricas[v.fabrica_id].nome_fantasia, "data": v.data_venda.isoformat(),
                            "novo_no_escritorio": primeira[v.cliente_id].id == v.id} for v in aberturas],
             "fabricas_quentes": [{"nome": fabricas[f].nome_fantasia, "crescimento": round((valor / fat_anteriores[f] - 1) * 100, 1)}
                                 for f, valor in fat_fabricas.items() if fat_anteriores[f] and valor > fat_anteriores[f]]}
 
     def alertas(self, vendedor_id=None, fabrica_id=None):
-        ref = date.today()
+        ref = hoje_comercial()
         vendas = self.db.query(Venda.id, Venda.cliente_id, Venda.fabrica_id, Venda.data_venda, Venda.vendedor_id).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
-        clientes = {c.id: c for c in self.db.query(Cliente.id, Cliente.razao_social)}
+        vendas = [SimpleNamespace(**{**v._mapping, "cliente_id": self.identidade.id(v.cliente_id)}) for v in vendas]
         atendidos_fabrica = {v.cliente_id for v in vendas if v.fabrica_id == fabrica_id}
         fabricas = {f.id: f for f in self.db.query(Fabrica).all()}
         por_cliente, por_fabrica, por_produto = defaultdict(list), defaultdict(list), defaultdict(dict)
@@ -94,7 +100,7 @@ class ComercialService:
                  .join(Produto, Produto.id == ItemVenda.produto_id).filter(Venda.data_venda <= ref,
                      *([Produto.fabrica_id == fabrica_id] if fabrica_id is not None else [])).distinct().order_by(Venda.data_venda, Venda.id).all())
         for r in itens:
-            por_produto[(r.cliente_id, r.produto_id)][r.data_venda] = r
+            por_produto[(self.identidade.id(r.cliente_id), r.produto_id)][r.data_venda] = r
         resultado = []
         filtro_fabrica = fabrica_id
         def adicionar(tipo, cliente_id, descricao, dias, prioridade, venda, fabrica_id=None, produto_id=None):
@@ -103,7 +109,7 @@ class ComercialService:
             if filtro_fabrica is not None and (fabrica_id != filtro_fabrica if fabrica_id is not None else cliente_id not in atendidos_fabrica):
                 return
             resultado.append({"id": f"{tipo}:{cliente_id}:{fabrica_id or 0}:{produto_id or 0}", "tipo": tipo,
-                              "cliente_id": cliente_id, "cliente": clientes[cliente_id].razao_social,
+                              "cliente_id": cliente_id, "cliente": self.identidade.nome(cliente_id),
                               "descricao": descricao, "dias": dias, "prioridade": prioridade,
                               "fabrica_id": fabrica_id, "produto_id": produto_id})
         for cid, historico in por_cliente.items():

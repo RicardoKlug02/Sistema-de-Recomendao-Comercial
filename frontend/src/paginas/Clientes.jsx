@@ -17,7 +17,7 @@ export default function Clientes({ inicial = null, fabricas = [] }) {
   const [termo, definirTermo] = useState('')
   const [pagina, definirPagina] = useState(1)
   const [clienteId, definirCliente] = useState(inicial)
-  const [rede, definirRede] = useState(false)
+  const [rede, definirRede] = useState(true)
   const lista = useDados(
     clienteId
       ? null
@@ -94,7 +94,7 @@ export default function Clientes({ inicial = null, fabricas = [] }) {
             className="botao-texto voltar-clientes"
             onClick={() => {
               definirCliente(null)
-              definirRede(false)
+              definirRede(true)
             }}
           >
             ← Voltar para clientes
@@ -105,7 +105,7 @@ export default function Clientes({ inicial = null, fabricas = [] }) {
               checked={rede}
               onChange={(e) => definirRede(e.target.checked)}
             />{' '}
-            Agrupar compras da rede de clientes
+            Cliente comercial: agrupar todos os CNPJs da rede
           </label>
           <div className="filtros-comerciais"><FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={definirFabrica} /></div>
           {ficha.erro && <p role="alert">{ficha.erro}</p>}
@@ -117,7 +117,7 @@ export default function Clientes({ inicial = null, fabricas = [] }) {
                 <h2>{cliente.razao_social}</h2>
                 <p>
                   {cliente.grupo_economico || 'Cliente individual'} ·{' '}
-                  {cliente.clientes_agrupados} estabelecimento(s)
+                  {cliente.clientes_agrupados} cadastro(s) fiscal(is)
                 </p>
               </section>
               <div className="grade-indicadores">
@@ -132,6 +132,12 @@ export default function Clientes({ inicial = null, fabricas = [] }) {
                   detalhe="Inclui pedidos diretos de fábrica"
                 />
               </div>
+              <Cartao titulo="Cadastros fiscais do cliente">
+                <ul>{cliente.cadastros_fiscais?.map((c) => <li key={c.id}>
+                  {c.razao_social} · {c.cnpj_cpf || 'Documento não informado'}
+                  {rede && <button className="botao-texto" onClick={() => { definirCliente(c.id); definirRede(false) }}>Consultar este CNPJ</button>}
+                </li>)}</ul>
+              </Cartao>
               <RitmoCompras
                 ritmo={cliente.ritmo_compras}
                 produtos={cliente.comparacao_produtos || []}

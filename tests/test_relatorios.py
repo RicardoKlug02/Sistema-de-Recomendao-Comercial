@@ -43,7 +43,7 @@ def test_filtro_fabrica_consistente_na_lista_ficha_e_painel(client,token_admin,d
     lista=client.get(f'/api/v1/comercial/clientes?fabrica_id={b.id}',headers=h).json()
     assert lista['total']==1 and lista['itens'][0]['id']==c1.id
     busca=client.get(f'/api/v1/comercial/clientes?termo=Filial&fabrica_id={b.id}',headers=h).json()
-    assert busca['total']==0
+    assert busca['total']==1 and busca['itens'][0]['id']==c1.id
     ficha=ClienteService(db_session).obter_dossie_cliente(c1.id,agrupar_rede=True,fabrica_id=b.id)
     assert ficha['valor_comprado']==14 and ficha['pedidos_emitidos']==1
     assert {r['fabrica_id'] for r in ficha['resumo_fabricas']}=={b.id}

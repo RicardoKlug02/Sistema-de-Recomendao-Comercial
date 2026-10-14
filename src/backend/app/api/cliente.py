@@ -49,7 +49,7 @@ def obter_cross_selling(
 @router.get("/{cliente_id}", response_model=ClienteDetalhesOut)
 def obter_ficha_cliente(
     cliente_id: int,
-    agrupar_rede: bool = False,
+    agrupar_rede: bool = True,
     fabrica_id: int | None = None,
     db: Session = Depends(get_db),
     _: Usuario = Depends(get_usuario_atual),

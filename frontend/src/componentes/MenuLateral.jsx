@@ -6,6 +6,7 @@ const itens = [
   ['clientes', 'Clientes'],
   ['alertas', 'Alertas'],
   ['relatorios', 'Relatórios'],
+  ['analise', 'Análise do sistema'],
   ['importacoes', 'Importação'],
   ['usuarios', 'Usuários'],
 ]

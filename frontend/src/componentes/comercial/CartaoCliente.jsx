@@ -8,7 +8,7 @@ export default function CartaoCliente({ cliente, aoAbrir }) {
           <Icone nome="clientes" />
         </span>
         <span className="etiqueta etiqueta-neutra">
-          {cliente.grupo_economico ? 'Rede de clientes' : 'Cliente individual'}
+          {cliente.grupo_economico ? 'Cliente comercial' : 'Cliente individual'}
         </span>
       </div>
       <h2>{cliente.razao_social}</h2>
@@ -18,7 +18,7 @@ export default function CartaoCliente({ cliente, aoAbrir }) {
           'Localização não informada'}
       </p>
       <p className="rede-cliente">
-        {cliente.grupo_economico || 'Sem grupo econômico'}
+        {cliente.cadastros_fiscais || 1} cadastro(s) fiscal(is)
       </p>
       <button className="botao-abrir" onClick={() => aoAbrir(cliente.id)}>
         Abrir ficha <Icone nome="seta" tamanho={17} />
