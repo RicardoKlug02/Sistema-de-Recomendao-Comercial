@@ -11,13 +11,14 @@ from src.backend.app.api.auth import router as auth_router
 from src.backend.app.api.cliente import router as cliente_router
 from src.backend.app.api.upload import router as upload_router
 from src.backend.app.api.comercial import router as comercial_router
+from src.backend.app.api.relatorios import router as relatorios_router
 
 app = FastAPI(title="Sales Intelligence API", version="1.1.0",
               description="Indicadores, Cliente 360º e alertas de inteligência comercial")
 app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS,
                    allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"],
                    allow_headers=["Authorization", "Content-Type"])
-for router in (auth_router, cliente_router, upload_router, comercial_router):
+for router in (auth_router, cliente_router, upload_router, comercial_router, relatorios_router):
     app.include_router(router, prefix="/api/v1")
 
 DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"

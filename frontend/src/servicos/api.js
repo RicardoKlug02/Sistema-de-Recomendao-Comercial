@@ -9,8 +9,11 @@ export function salvarSessao(sessao) {
   else sessionStorage.removeItem(chave)
 }
 export async function solicitar(caminho, opcoes = {}) {
-  const { tempoLimite = 90000, ...config } = opcoes
+  const { tempoLimite = 90000, formato = 'json', signal, ...config } = opcoes
   const controlador = new AbortController()
+  const cancelar = () => controlador.abort()
+  if (signal?.aborted) cancelar()
+  else signal?.addEventListener('abort', cancelar, { once: true })
   const temporizador = setTimeout(() => controlador.abort(), tempoLimite)
   const token = obterSessao()?.access_token
   const headers = new Headers(config.headers)
@@ -21,7 +24,7 @@ export async function solicitar(caminho, opcoes = {}) {
   }
   try {
     const resposta = await fetch(`${origem}/api/v1${caminho}`, { ...config, headers, signal: controlador.signal })
-    const dados = await resposta.json().catch(() => null)
+    const dados = resposta.ok && formato === 'blob' ? await resposta.blob() : await resposta.json().catch(() => null)
     if (!resposta.ok) {
       if (resposta.status === 401 && token) {
         salvarSessao(null)
@@ -37,5 +40,6 @@ export async function solicitar(caminho, opcoes = {}) {
     throw erro
   } finally {
     clearTimeout(temporizador)
+    signal?.removeEventListener('abort', cancelar)
   }
 }

@@ -7,11 +7,13 @@ import Icone from '../componentes/comercial/Icone'
 import GraficoMensal from '../componentes/graficos/GraficoMensal'
 import RankingBarras from '../componentes/graficos/RankingBarras'
 import useDados from '../servicos/useDados'
+import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
 import { formatarMoeda } from '../servicos/dadosPainel'
 
 // Mantém os filtros e contratos da main; apresentação e gráficos são independentes da API.
 export default function VisaoGeral({
   vendedores,
+  fabricas = [],
   erroVendedores,
   versao,
   aoAtualizar,
@@ -21,9 +23,11 @@ export default function VisaoGeral({
 }) {
   const [mes, definirMes] = useState('')
   const [vendedor, definirVendedor] = useState('')
+  const [fabrica, definirFabrica] = useState('')
   const parametros = new URLSearchParams()
   if (mes) parametros.set('mes', mes)
   if (vendedor) parametros.set('vendedor_id', vendedor)
+  if (fabrica) parametros.set('fabrica_id', fabrica)
   const consulta = useDados(`/comercial/painel?${parametros}`, versao)
   const dados = consulta.dados
   const indicadores = dados?.indicadores
@@ -72,6 +76,7 @@ export default function VisaoGeral({
         >
           <Icone nome="atualizar" tamanho={16} /> Atualizar
         </button>
+        <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={definirFabrica} />
       </div>
       <EstadoConsulta
         erro={consulta.erro || erroVendedores}
@@ -182,7 +187,7 @@ export default function VisaoGeral({
               <RankingBarras
                 itens={(dados.produtos || []).map((p) => ({
                   ...p,
-                  detalhe: `${p.quantidade} unidades vendidas`,
+                  detalhe: `Código ${p.sku || 'não informado'} · ${p.quantidade} unidades vendidas`,
                 }))}
               />
             </Cartao>

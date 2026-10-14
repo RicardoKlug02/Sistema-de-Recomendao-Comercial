@@ -4,6 +4,7 @@ import Clientes from './Clientes'
 import Alertas from './Alertas'
 import Usuarios from './Usuarios'
 import VisaoGeral from './VisaoGeral'
+import Relatorios from './Relatorios'
 import MenuLateral from '../componentes/MenuLateral'
 import useDados from '../servicos/useDados'
 import './PainelComercial.css'
@@ -15,6 +16,7 @@ const secoes = {
   alertas: 'Alertas',
   importacoes: 'Importação',
   usuarios: 'Usuários',
+  relatorios: 'Relatórios',
 }
 
 // O shell coordena navegação e invalidação das consultas após uma importação confirmada.
@@ -23,6 +25,7 @@ export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
   const [clienteId, definirCliente] = useState(null)
   const [versao, definirVersao] = useState(0)
   const cadastroVendedores = useDados('/comercial/vendedores', versao)
+  const cadastroFabricas = useDados('/comercial/fabricas', versao)
   const atualizar = () => definirVersao((v) => v + 1)
   const gestor = ['admin', 'gestor'].includes(usuario.perfil)
   function abrirCliente(id) {
@@ -70,6 +73,7 @@ export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
       {secao === 'painel' && (
         <VisaoGeral
           vendedores={cadastroVendedores.dados || []}
+          fabricas={cadastroFabricas.dados || []}
           erroVendedores={cadastroVendedores.erro}
           versao={versao}
           aoAtualizar={atualizar}
@@ -82,15 +86,17 @@ export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
         <Importacao usuario={usuario} aoImportar={atualizar} />
       )}
       {secao === 'clientes' && (
-        <Clientes key={clienteId || 'lista'} inicial={clienteId} />
+        <Clientes key={clienteId || 'lista'} inicial={clienteId} fabricas={cadastroFabricas.dados || []} />
       )}
       {secao === 'alertas' && (
         <Alertas
+          fabricas={cadastroFabricas.dados || []}
           vendedores={cadastroVendedores.dados || []}
           aoAbrirCliente={abrirCliente}
         />
       )}
       {secao === 'usuarios' && gestor && <Usuarios />}
+      {secao === 'relatorios' && <Relatorios fabricas={cadastroFabricas.dados || []} />}
     </div>
   )
 }

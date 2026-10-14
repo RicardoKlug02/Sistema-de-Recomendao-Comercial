@@ -4,6 +4,7 @@ import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
 import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
 import Paginacao from '../componentes/comercial/Paginacao'
 import Icone from '../componentes/comercial/Icone'
+import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
 
 const tipos = {
   SEGUNDO_PEDIDO: 'Segundo pedido',
@@ -13,12 +14,13 @@ const tipos = {
   PRODUTO_EM_RISCO: 'Produto em risco',
 }
 
-export default function Alertas({ vendedores, aoAbrirCliente }) {
+export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
+  const [fabrica, definirFabrica] = useState('')
   const [tipo, definirTipo] = useState('')
   const [vendedor, definirVendedor] = useState('')
   const [pagina, definirPagina] = useState(1)
   const resposta = useDados(
-    `/comercial/alertas?pagina=${pagina}&tipo=${tipo}${vendedor ? `&vendedor_id=${vendedor}` : ''}`,
+    `/comercial/alertas?pagina=${pagina}&tipo=${tipo}${vendedor ? `&vendedor_id=${vendedor}` : ''}${fabrica ? `&fabrica_id=${fabrica}` : ''}`,
   )
   return (
     <main className="conteudo-painel" id="conteudo">
@@ -64,9 +66,10 @@ export default function Alertas({ vendedores, aoAbrirCliente }) {
         </label>
         {resposta.dados && (
           <span className="total-resultados">
-            {resposta.dados.total} oportunidades encontradas
+            {resposta.dados.total} clientes · {resposta.dados.total_alertas ?? resposta.dados.total} alertas
           </span>
         )}
+        <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={(v) => { definirFabrica(v); definirPagina(1) }} />
       </div>
       <EstadoConsulta
         carregando={resposta.carregando}
@@ -87,9 +90,11 @@ export default function Alertas({ vendedores, aoAbrirCliente }) {
                 {a.prioridade === 1 ? 'Prioridade alta' : 'Acompanhamento'}
               </span>
             </div>
-            <p className="sobretitulo tipo-alerta">{tipos[a.tipo] || a.tipo}</p>
             <h2>{a.cliente}</h2>
-            <p className="descricao-alerta">{a.descricao}</p>
+            <p className="descricao-alerta">{a.alertas?.length || 1} {(a.alertas?.length || 1) === 1 ? 'sinal' : 'sinais'} para acompanhar neste cliente.</p>
+            <details className="alertas-agrupados"><summary>Ver fábricas e produtos</summary><ul>
+              {(a.alertas || [a]).map((sinal) => <li key={sinal.id}><strong>{tipos[sinal.tipo] || sinal.tipo}</strong><p>{sinal.descricao}</p></li>)}
+            </ul></details>
             <button
               className="botao-abrir"
               onClick={() => aoAbrirCliente(a.cliente_id)}
@@ -105,7 +110,7 @@ export default function Alertas({ vendedores, aoAbrirCliente }) {
           total={resposta.dados.total}
           tamanho={50}
           aoMudar={definirPagina}
-          unidade="alertas"
+          unidade="clientes"
         />
       )}
       <p className="nota-painel">

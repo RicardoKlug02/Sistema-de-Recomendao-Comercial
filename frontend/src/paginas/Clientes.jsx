@@ -8,9 +8,11 @@ import Cartao from '../componentes/Cartao'
 import RitmoCompras from '../componentes/RitmoCompras'
 import CartaoIndicador from '../componentes/CartaoIndicador'
 import useDados from '../servicos/useDados'
+import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
 import { formatarMoeda } from '../servicos/dadosPainel'
 
-export default function Clientes({ inicial = null }) {
+export default function Clientes({ inicial = null, fabricas = [] }) {
+  const [fabrica, definirFabrica] = useState('')
   const [busca, definirBusca] = useState('')
   const [termo, definirTermo] = useState('')
   const [pagina, definirPagina] = useState(1)
@@ -19,10 +21,10 @@ export default function Clientes({ inicial = null }) {
   const lista = useDados(
     clienteId
       ? null
-      : `/comercial/clientes?termo=${encodeURIComponent(termo)}&pagina=${pagina}`,
+      : `/comercial/clientes?termo=${encodeURIComponent(termo)}&pagina=${pagina}${fabrica ? `&fabrica_id=${fabrica}` : ''}`,
   )
   const ficha = useDados(
-    clienteId ? `/clientes/${clienteId}?agrupar_rede=${rede}` : null,
+    clienteId ? `/clientes/${clienteId}?agrupar_rede=${rede}${fabrica ? `&fabrica_id=${fabrica}` : ''}` : null,
   )
   const cliente = ficha.dados
   // Lista e ficha compartilham a página, sem consultas desnecessárias da lista no detalhe.
@@ -57,6 +59,7 @@ export default function Clientes({ inicial = null }) {
             <button className="botao-secundario">
               <Icone nome="busca" tamanho={17} /> Buscar
             </button>
+            <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={(v) => { definirFabrica(v); definirPagina(1) }} />
             {lista.dados && (
               <span className="total-resultados">
                 {lista.dados.total} clientes
@@ -104,6 +107,7 @@ export default function Clientes({ inicial = null }) {
             />{' '}
             Agrupar compras da rede de clientes
           </label>
+          <div className="filtros-comerciais"><FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={definirFabrica} /></div>
           {ficha.erro && <p role="alert">{ficha.erro}</p>}
           {ficha.carregando && <p role="status">Analisando histórico…</p>}
           {cliente && (
@@ -162,7 +166,7 @@ export default function Clientes({ inicial = null }) {
                     <ul>
                       {cliente.sugestoes_reposicao.map((p) => (
                         <li key={p.produto_id}>
-                          {p.nome}: {p.status} · volume habitual{' '}
+                          Código {p.sku} · {p.nome}: {p.status} · volume habitual{' '}
                           {p.volume_habitual}
                         </li>
                       ))}
@@ -176,7 +180,7 @@ export default function Clientes({ inicial = null }) {
                     <ul>
                       {cliente.produtos_em_abandono.map((p) => (
                         <li key={p.produto_id}>
-                          {p.nome}: {p.dias_parado} dias sem comprar.
+                          Código {p.sku} · {p.nome}: {p.dias_parado} dias sem comprar.
                         </li>
                       ))}
                     </ul>
@@ -189,7 +193,7 @@ export default function Clientes({ inicial = null }) {
                     <ul>
                       {cliente.sugestoes_expansao_mix.map((p) => (
                         <li key={p.produto_id}>
-                          <strong>{p.nome}</strong>
+                          <strong>Código {p.sku} · {p.nome}</strong>
                           <p>
                             {p.motivo} · volume sugerido:{' '}
                             {p.volume_sugerido_unidades}

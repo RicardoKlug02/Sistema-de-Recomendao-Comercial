@@ -143,3 +143,8 @@
     font-size: 11px;
   }
 }
+
+.alertas-agrupados { margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
+.alertas-agrupados summary { cursor: pointer; color: var(--verde); padding: 10px 0; }
+.alertas-agrupados ul { max-height: 320px; overflow-y: auto; padding-left: 20px; }
+.alertas-agrupados li { margin-bottom: 16px; }

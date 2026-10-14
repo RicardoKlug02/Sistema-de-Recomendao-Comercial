@@ -22,7 +22,7 @@ class ClienteService:
         self.db = db_session
         self.colaborativo = ColaborativoService(db_session=db_session)
 
-    def buscar_por_termo(self, termo: str, limite: int = 15) -> List[Dict[str, Any]]:
+    def buscar_por_termo(self, termo: str, limite: Optional[int] = 15, fabrica_id: Optional[int] = None) -> List[Dict[str, Any]]:
         # A cifra é decifrada em lotes; não existe corte arbitrário da carteira.
         import unicodedata
         def normalizar(s):
@@ -34,19 +34,24 @@ class ClienteService:
         digitos = re.sub(r"\D", "", termo)
         hash_alvo = gerar_blind_index(digitos) if len(digitos) in (11, 14) else None
         resultados = []
-        for c in self.db.query(Cliente).order_by(Cliente.id).yield_per(200):
+        query = self.db.query(Cliente).order_by(Cliente.id)
+        if hash_alvo:
+            query = query.filter(Cliente.cnpj_hash == hash_alvo)
+        if fabrica_id is not None:
+            query = query.filter(self.db.query(Venda.id).filter(Venda.cliente_id == Cliente.id, Venda.fabrica_id == fabrica_id).exists())
+        for c in query.yield_per(200):
             if (hash_alvo and c.cnpj_hash == hash_alvo) or any(alvo in normalizar(v) for v in
                 (c.razao_social, c.nome_fantasia, c.grupo_economico, c.cidade)):
                 resultados.append({"id": c.id, "razao_social": c.razao_social,
                     "nome_fantasia": c.nome_fantasia, "cnpj_cpf": c.cnpj_cpf,
                     "grupo_economico": c.grupo_economico, "cidade": c.cidade, "estado": c.estado})
-                if len(resultados) >= limite:
+                if limite is not None and len(resultados) >= limite:
                     break
         return resultados
 
 
     def obter_dossie_cliente(
-        self, cliente_id: int, ref_date: Optional[date] = None, agrupar_rede: bool = False
+        self, cliente_id: int, ref_date: Optional[date] = None, agrupar_rede: bool = False, fabrica_id: Optional[int] = None
     ) -> Optional[Dict[str, Any]]:
         """Dossiê analítico 360: histórico, ciclo de fábrica, reposição, abandono e YoY."""
         ref = ref_date or date.today()
@@ -74,7 +79,8 @@ class ClienteService:
             .outerjoin(ItemVenda, ItemVenda.venda_id == Venda.id)
             .outerjoin(Produto, Produto.id == ItemVenda.produto_id)
             .join(Fabrica, Fabrica.id == Venda.fabrica_id)
-            .filter(Venda.cliente_id.in_(cliente_ids), Venda.data_venda <= ref)
+            .filter(Venda.cliente_id.in_(cliente_ids), Venda.data_venda <= ref,
+                    *([Venda.fabrica_id == fabrica_id] if fabrica_id is not None else []))
             .order_by(Venda.data_venda.asc())
             .all()
         )
@@ -105,14 +111,13 @@ class ClienteService:
                 "sugestoes_expansao_mix": [],
             }
 
-        recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10)
+        recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10, fabrica_id=fabrica_id)
         compradas = {r.fabrica_id for r in registros}
         sugestoes_fabricas = {}
         for sugestao in recomendacoes:
-            produto = self.db.get(Produto, sugestao["produto_id"])
-            if produto and produto.fabrica_id not in compradas:
-                fabrica = self.db.get(Fabrica, produto.fabrica_id)
-                sugestoes_fabricas[fabrica.id] = {"id": fabrica.id, "nome": fabrica.nome_fantasia,
+            if sugestao["fabrica_id"] not in compradas:
+                fid = sugestao["fabrica_id"]
+                sugestoes_fabricas[fid] = {"id": fid, "nome": sugestao["fabrica"],
                     "motivo": "Produtos desta fábrica são comprados por redes de consumo semelhante."}
         return {
             **base_info,

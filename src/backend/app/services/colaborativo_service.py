@@ -2,6 +2,8 @@ import math
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from src.backend.app.models.fabrica import Fabrica
 
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.item_venda import ItemVenda
@@ -16,31 +18,32 @@ class ColaborativoService:
 
     def _obter_identificador_grupo(self, cliente_id: int) -> Optional[str]:
         cliente = (
-            self.db.query(Cliente.grupo_economico, Cliente.cnpj_cpf)
+            self.db.query(Cliente.grupo_economico, Cliente.id)
             .filter(Cliente.id == cliente_id)
             .first()
         )
         if not cliente:
             return None
-        return cliente.grupo_economico or cliente.cnpj_cpf
+        return cliente.grupo_economico or f"cliente:{cliente.id}"
 
     def _carregar_perfis_consumo(self) -> Dict[str, Dict[int, float]]:
         """Mapeia o consumo agregado por grupo econômico: {grupo: {produto_id: quantidade_total}}."""
         registros = (
             self.db.query(
                 Cliente.grupo_economico,
-                Cliente.cnpj_cpf,
+                Cliente.id,
                 ItemVenda.produto_id,
-                ItemVenda.quantidade,
+                func.sum(ItemVenda.quantidade).label("quantidade"),
             )
             .join(Venda, Venda.cliente_id == Cliente.id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .group_by(Cliente.id, Cliente.grupo_economico, ItemVenda.produto_id)
             .all()
         )
 
         perfis: Dict[str, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
         for r in registros:
-            chave_grupo = r.grupo_economico or r.cnpj_cpf
+            chave_grupo = r.grupo_economico or f"cliente:{r.id}"
             perfis[chave_grupo][r.produto_id] += float(r.quantidade)
 
         return perfis
@@ -90,6 +93,7 @@ class ColaborativoService:
         cliente_id: int,
         top_k_vizinhos: int = 5,
         top_n_produtos: int = 4,
+        fabrica_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Gera recomendações de mix cruzando com grupos econômicos de comportamento análogo."""
         grupo_alvo = self._obter_identificador_grupo(cliente_id)
@@ -131,6 +135,9 @@ class ColaborativoService:
         if not candidatos:
             return []
 
+        if fabrica_id is not None:
+            permitidos = {p.id for p in self.db.query(Produto.id).filter(Produto.fabrica_id == fabrica_id)}
+            candidatos = {pid: m for pid, m in candidatos.items() if pid in permitidos}
         produtos_avaliados = []
         for prod_id, metricas in candidatos.items():
             afinidade_pct = (metricas["peso_compradores"] / soma_pesos) * 100
@@ -146,13 +153,14 @@ class ColaborativoService:
         top_produtos = produtos_avaliados[:top_n_produtos]
 
         ids = [p["produto_id"] for p in top_produtos]
-        produtos_db = {p.id: p for p in self.db.query(Produto).filter(Produto.id.in_(ids)).all()}
+        produtos_db = {p.id: (p, f) for p, f in self.db.query(Produto, Fabrica).join(Fabrica, Fabrica.id == Produto.fabrica_id).filter(Produto.id.in_(ids)).all()}
 
         recomendacoes = []
         for item in top_produtos:
-            prod = produtos_db.get(item["produto_id"])
-            if not prod:
+            par = produtos_db.get(item["produto_id"])
+            if not par:
                 continue
+            prod, fabrica = par
 
             nota = item["afinidade_pct"]
             if nota >= 75:
@@ -165,6 +173,7 @@ class ColaborativoService:
             recomendacoes.append({
                 "produto_id": prod.id,
                 "sku": prod.sku,
+                "fabrica_id": fabrica.id, "fabrica": fabrica.nome_fantasia,
                 "nome": prod.nome,
                 "afinidade_percentual": item["afinidade_pct"],
                 "classificacao": status,

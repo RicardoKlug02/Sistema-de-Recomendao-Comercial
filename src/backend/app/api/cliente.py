@@ -50,12 +50,13 @@ def obter_cross_selling(
 def obter_ficha_cliente(
     cliente_id: int,
     agrupar_rede: bool = False,
+    fabrica_id: int | None = None,
     db: Session = Depends(get_db),
     _: Usuario = Depends(get_usuario_atual),
 ):
     """Dossiê 360 do cliente: faturamento recente, ciclo por fábrica, reposições e abandono."""
     service = ClienteService(db_session=db)
-    detalhes = service.obter_dossie_cliente(cliente_id, agrupar_rede=agrupar_rede)
+    detalhes = service.obter_dossie_cliente(cliente_id, agrupar_rede=agrupar_rede, fabrica_id=fabrica_id)
 
     if not detalhes:
         raise HTTPException(

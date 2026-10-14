@@ -7,6 +7,8 @@ Aplicação React + FastAPI + PostgreSQL para acompanhar vendas e oportunidades 
 - Central de alertas de segundo pedido, inatividade de cliente/fábrica e abandono de produtos.
 - Conferência de duas planilhas antes da importação transacional, com histórico das cargas.
 - Aprovação de usuários pela área administrativa.
+- Relatórios em PDF por rede e fábrica, com códigos, última compra e último preço unitário.
+- Filtros por fábrica e alertas agrupados em um card por cliente.
 
 Pedidos diretos de fábrica sem itens são válidos: participam do faturamento e da atividade do cliente/fábrica. Recomendações de produtos utilizam apenas itens conhecidos.
 

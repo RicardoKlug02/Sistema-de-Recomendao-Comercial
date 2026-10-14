@@ -7,12 +7,13 @@ export default function useDados(endpoint, versao = 0) {
   useEffect(() => {
     if (!endpoint) return
     let ativa = true
-    solicitar(endpoint).then((dados) => {
+    const controlador = new AbortController()
+    solicitar(endpoint, { signal: controlador.signal }).then((dados) => {
       if (ativa) definirResultado({ chave, dados, erro: '' })
     }).catch((falha) => {
       if (ativa) definirResultado({ chave, dados: null, erro: falha.message })
     })
-    return () => { ativa = false }
+    return () => { ativa = false; controlador.abort() }
   }, [endpoint, chave])
   return resultado.chave === chave ? { ...resultado, carregando: false } : { dados: null, erro: '', carregando: !!endpoint }
 }

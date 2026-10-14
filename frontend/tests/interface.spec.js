@@ -60,6 +60,17 @@ async function preparar(page, perfil = 'admin') {
     else if (caminho === '/auth/me') body = { ...usuario, perfil }
     else if (caminho === '/comercial/vendedores')
       body = [{ id: 1, nome: 'Vendedor Exemplo' }]
+    else if (caminho === '/comercial/fabricas')
+      body = [{ id: 1, nome: 'Fábrica Exemplo' }]
+    else if (caminho === '/relatorios/redes')
+      body = [{ nome: 'Rede Exemplo', clientes: 2 }]
+    else if (caminho === '/relatorios/produtos-rede')
+      body = { rede: 'Rede Exemplo', fabrica: 'Fábrica Exemplo', clientes: 2, total: 1, pedidos_sem_itens: 0,
+        produtos: [{ produto_id: 1, sku: 'COD-EXEMPLO', nome: 'Produto Exemplo', fabrica: 'Fábrica Exemplo', ultima_compra: '2026-08-01', ultimo_preco: 12, pedido: '123', cliente: 'Filial Exemplo' }] }
+    else if (caminho === '/relatorios/produtos-rede/pdf') {
+      await route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%%EOF' })
+      return
+    }
     else if (caminho === '/comercial/painel') body = painel
     else if (caminho === '/comercial/clientes')
       body = { total: 1, itens: [cliente] }
@@ -250,4 +261,18 @@ test('erro de API não aparece como faturamento zero', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Faturamento', exact: true }),
   ).toHaveCount(0)
+})
+
+test('relatório da rede filtra fábrica e baixa PDF autenticado', async ({ page }) => {
+  await preparar(page)
+  await entrar(page)
+  await page.getByRole('link', { name: 'Relatórios', exact: true }).click()
+  await page.getByLabel('Rede de clientes', { exact: true }).selectOption('Rede Exemplo')
+  const pedido = page.waitForRequest(r => r.url().includes('/relatorios/produtos-rede?') && r.url().includes('fabrica_id=1'))
+  await page.getByLabel('Fábrica', { exact: true }).selectOption('1')
+  await pedido
+  await expect(page.getByRole('cell', { name: 'COD-EXEMPLO', exact: true })).toBeVisible()
+  const pdf = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Baixar PDF', exact: true }).click()
+  expect((await pdf).suggestedFilename()).toBe('produtos-da-rede.pdf')
 })

@@ -10,17 +10,17 @@ class ComercialService:
     def __init__(self, db):
         self.db = db
 
-    def painel(self, mes=None, vendedor_id=None):
+    def painel(self, mes=None, vendedor_id=None, fabrica_id=None):
         ref = date.today()
-        todas = self.db.query(Venda).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
+        todas = self.db.query(Venda.id, Venda.data_venda, Venda.cliente_id, Venda.fabrica_id, Venda.vendedor_id, Venda.valor_total).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
         mes = mes or (todas[-1].data_venda.strftime("%Y-%m") if todas else ref.strftime("%Y-%m"))
         inicio = date.fromisoformat(mes + "-01")
         fim = inicio + relativedelta(months=1)
         vendas = [v for v in todas if inicio <= v.data_venda < fim and
-                  (vendedor_id is None or v.vendedor_id == vendedor_id)]
+                  (vendedor_id is None or v.vendedor_id == vendedor_id) and (fabrica_id is None or v.fabrica_id == fabrica_id)]
         anteriores = [v for v in todas if inicio - relativedelta(months=1) <= v.data_venda < inicio and
-                      (vendedor_id is None or v.vendedor_id == vendedor_id)]
-        clientes = {c.id: c for c in self.db.query(Cliente).all()}
+                      (vendedor_id is None or v.vendedor_id == vendedor_id) and (fabrica_id is None or v.fabrica_id == fabrica_id)]
+        clientes = {c.id: c for c in self.db.query(Cliente.id, Cliente.razao_social, Cliente.micro_regiao, Cliente.estado).filter(Cliente.id.in_({v.cliente_id for v in vendas}))}
         fabricas = {f.id: f for f in self.db.query(Fabrica).all()}
         primeira, primeira_fabrica, ultima, reativados = {}, {}, {}, set()
         ids_vendas = {v.id for v in vendas}
@@ -37,7 +37,7 @@ class ComercialService:
         total = sum(v.valor_total for v in vendas)
         mensal, fat_clientes, fat_fabricas, fat_anteriores = defaultdict(float), defaultdict(float), defaultdict(float), defaultdict(float)
         for v in todas:
-            if vendedor_id is None or v.vendedor_id == vendedor_id:
+            if (vendedor_id is None or v.vendedor_id == vendedor_id) and (fabrica_id is None or v.fabrica_id == fabrica_id):
                 mensal[v.data_venda.strftime("%Y-%m")] += v.valor_total
         for v in vendas:
             fat_clientes[v.cliente_id] += v.valor_total
@@ -79,25 +79,30 @@ class ComercialService:
             "fabricas_quentes": [{"nome": fabricas[f].nome_fantasia, "crescimento": round((valor / fat_anteriores[f] - 1) * 100, 1)}
                                 for f, valor in fat_fabricas.items() if fat_anteriores[f] and valor > fat_anteriores[f]]}
 
-    def alertas(self, vendedor_id=None):
+    def alertas(self, vendedor_id=None, fabrica_id=None):
         ref = date.today()
-        vendas = self.db.query(Venda).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
-        clientes = {c.id: c for c in self.db.query(Cliente).all()}
+        vendas = self.db.query(Venda.id, Venda.cliente_id, Venda.fabrica_id, Venda.data_venda, Venda.vendedor_id).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
+        clientes = {c.id: c for c in self.db.query(Cliente.id, Cliente.razao_social)}
+        atendidos_fabrica = {v.cliente_id for v in vendas if v.fabrica_id == fabrica_id}
         fabricas = {f.id: f for f in self.db.query(Fabrica).all()}
         por_cliente, por_fabrica, por_produto = defaultdict(list), defaultdict(list), defaultdict(dict)
         for v in vendas:
             por_cliente[v.cliente_id].append(v)
             por_fabrica[(v.cliente_id, v.fabrica_id)].append(v)
-        itens = (self.db.query(Venda.cliente_id, Venda.data_venda, Venda.vendedor_id, ItemVenda.produto_id, Produto.nome)
+        itens = (self.db.query(Venda.cliente_id, Venda.data_venda, Venda.vendedor_id, Venda.id, ItemVenda.produto_id, Produto.nome, Produto.sku, Produto.fabrica_id)
                  .select_from(Venda).join(ItemVenda, ItemVenda.venda_id == Venda.id)
-                 .join(Produto, Produto.id == ItemVenda.produto_id).filter(Venda.data_venda <= ref).all())
+                 .join(Produto, Produto.id == ItemVenda.produto_id).filter(Venda.data_venda <= ref,
+                     *([Produto.fabrica_id == fabrica_id] if fabrica_id is not None else [])).distinct().order_by(Venda.data_venda, Venda.id).all())
         for r in itens:
             por_produto[(r.cliente_id, r.produto_id)][r.data_venda] = r
         resultado = []
+        filtro_fabrica = fabrica_id
         def adicionar(tipo, cliente_id, descricao, dias, prioridade, venda, fabrica_id=None, produto_id=None):
             if vendedor_id is not None and venda.vendedor_id != vendedor_id:
                 return
-            resultado.append({"id": f"{tipo}:{cliente_id}:{fabrica_id or produto_id or 0}", "tipo": tipo,
+            if filtro_fabrica is not None and (fabrica_id != filtro_fabrica if fabrica_id is not None else cliente_id not in atendidos_fabrica):
+                return
+            resultado.append({"id": f"{tipo}:{cliente_id}:{fabrica_id or 0}:{produto_id or 0}", "tipo": tipo,
                               "cliente_id": cliente_id, "cliente": clientes[cliente_id].razao_social,
                               "descricao": descricao, "dias": dias, "prioridade": prioridade,
                               "fabrica_id": fabrica_id, "produto_id": produto_id})
@@ -123,6 +128,6 @@ class ComercialService:
             dias = (ref - datas[-1]).days
             if dias >= max(30, ciclo * 1.5):
                 meta = compras[datas[-1]]
-                adicionar("PRODUTO_EM_RISCO", cid, f"{meta.nome}: {dias} dias sem comprar (ciclo médio {ciclo:.0f} dias).",
-                          dias, 1 if dias >= ciclo * 2.5 else 2, meta, produto_id=pid)
+                adicionar("PRODUTO_EM_RISCO", cid, f"{fabricas[meta.fabrica_id].nome_fantasia} · Código {meta.sku} · {meta.nome}: {dias} dias sem comprar (ciclo médio {ciclo:.0f} dias).",
+                          dias, 1 if dias >= ciclo * 2.5 else 2, meta, produto_id=pid, fabrica_id=meta.fabrica_id)
         return sorted(resultado, key=lambda a: (a["prioridade"], -a["dias"], a["cliente_id"]))
