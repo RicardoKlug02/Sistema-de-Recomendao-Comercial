@@ -75,16 +75,22 @@ class AnaliseService:
     def produtos_posicao(self, referencia):
         if referencia in self._produtos_cache:
             return self._produtos_cache[referencia]
-        comercial = self.identidade.expressao()
-        q = (self.db.query(comercial, ItemVenda.produto_id, Venda.fabrica_id,
-             func.min(Venda.data_venda), func.max(Venda.data_venda), func.count(func.distinct(Venda.data_venda)))
+        # Materializa a identidade em subconsulta: PostgreSQL com parâmetros posicionais
+        # não reconhece CASE repetido no SELECT/GROUP BY como a mesma expressão.
+        q = (self.db.query(self.identidade.expressao().label('comercial_id'),
+             ItemVenda.produto_id, Venda.fabrica_id, Venda.data_venda)
              .join(ItemVenda, ItemVenda.venda_id == Venda.id).filter(Venda.data_venda <= referencia))
         if self.fabrica_id is not None:
             q = q.filter(Venda.fabrica_id == self.fabrica_id)
         if self.rede:
             q = q.filter(Venda.cliente_id.in_(self.rede_ids))
+        base = q.subquery()
+        registros = (self.db.query(base.c.comercial_id, base.c.produto_id, base.c.fabrica_id,
+                     func.min(base.c.data_venda), func.max(base.c.data_venda),
+                     func.count(func.distinct(base.c.data_venda)))
+                     .group_by(base.c.comercial_id, base.c.produto_id, base.c.fabrica_id))
         resultado = {(r[0],r[1]): {'fabrica_id':r[2], 'primeira':r[3], 'ultima':r[4], 'datas':r[5]}
-                for r in q.group_by(comercial, ItemVenda.produto_id, Venda.fabrica_id)}
+                     for r in registros}
         self._produtos_cache[referencia] = resultado
         return resultado
 
