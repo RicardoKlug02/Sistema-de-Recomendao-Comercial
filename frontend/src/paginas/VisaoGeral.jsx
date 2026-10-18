@@ -1,25 +1,23 @@
 import { useState } from 'react'
 import Cartao from '../componentes/Cartao'
 import CartaoIndicador from '../componentes/CartaoIndicador'
-import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
-import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
-import Icone from '../componentes/comercial/Icone'
+import CabecalhoPagina from '../componentes/CabecalhoPagina'
+import EstadoConsulta from '../componentes/EstadoConsulta'
+import Icone from '../componentes/Icone'
+import Seletor from '../componentes/Seletor'
 import GraficoMensal from '../componentes/graficos/GraficoMensal'
 import RankingBarras from '../componentes/graficos/RankingBarras'
-import useDados from '../servicos/useDados'
-import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
-import { formatarMoeda } from '../servicos/dadosPainel'
+import useDados from '../hooks/useDados'
+import { formatarMoeda } from '../servicos/formatacao'
 
-// Mantém os filtros e contratos da main; apresentação e gráficos são independentes da API.
 export default function VisaoGeral({
   vendedores,
-  fabricas = [],
+  fabricas,
   erroVendedores,
   versao,
   aoAtualizar,
   aoAbrirCliente,
   aoAbrirAlertas,
-  referenciaTitulo,
 }) {
   const [mes, definirMes] = useState('')
   const [vendedor, definirVendedor] = useState('')
@@ -33,12 +31,8 @@ export default function VisaoGeral({
   const indicadores = dados?.indicadores
   const mesAtivo = mes || dados?.mes || ''
   return (
-    <main className="conteudo-painel" id="conteudo">
-      <CabecalhoPagina
-        titulo="Visão geral"
-        descricao="Um olhar sobre sua carteira. Clareza para a próxima visita."
-        referencia={referenciaTitulo}
-      >
+    <main className="conteudo-painel">
+      <CabecalhoPagina titulo="Visão geral" descricao="Um olhar sobre sua carteira. Clareza para a próxima visita.">
         <span className="etiqueta etiqueta-neutra">
           <span className="ponto-status" /> Dados do histórico importado
         </span>
@@ -48,57 +42,35 @@ export default function VisaoGeral({
           <span>
             <Icone nome="calendario" tamanho={15} /> Período
           </span>
-          <input
-            type="month"
-            value={mesAtivo}
-            onChange={(e) => definirMes(e.target.value)}
-          />
+          <input type="month" value={mesAtivo} onChange={(e) => definirMes(e.target.value)} />
         </label>
-        <label>
-          Vendedor
-          <select
-            aria-label="Vendedor"
-            value={vendedor}
-            onChange={(e) => definirVendedor(e.target.value)}
-          >
-            <option value="">Toda a equipe</option>
-            {vendedores.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          className="botao-secundario"
-          onClick={aoAtualizar}
-          disabled={consulta.carregando}
-        >
+        <Seletor
+          rotulo="Vendedor"
+          todos="Toda a equipe"
+          opcoes={vendedores}
+          valor={vendedor}
+          aoMudar={definirVendedor}
+        />
+        <button className="botao-secundario" onClick={aoAtualizar} disabled={consulta.carregando}>
           <Icone nome="atualizar" tamanho={16} /> Atualizar
         </button>
-        <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={definirFabrica} />
+        <Seletor
+          rotulo="Fábrica"
+          todos="Todas as fábricas"
+          opcoes={fabricas}
+          valor={fabrica}
+          aoMudar={definirFabrica}
+        />
       </div>
-      <EstadoConsulta
-        erro={consulta.erro || erroVendedores}
-        carregando={consulta.carregando}
-        aoTentar={aoAtualizar}
-      />
+      <EstadoConsulta erro={consulta.erro || erroVendedores} carregando={consulta.carregando} aoTentar={aoAtualizar} />
       {indicadores && (
         <>
           <div className="grade-indicadores">
             {[
               ['Faturamento', formatarMoeda(indicadores.venda_total), 'vendas'],
               ['Pedidos emitidos', indicadores.pedidos_emitidos, 'painel'],
-              [
-                'Clientes atendidos',
-                indicadores.clientes_atendidos,
-                'clientes',
-              ],
-              [
-                'Ticket médio',
-                formatarMoeda(indicadores.ticket_medio),
-                'grafico',
-              ],
+              ['Clientes atendidos', indicadores.clientes_atendidos, 'clientes'],
+              ['Ticket médio', formatarMoeda(indicadores.ticket_medio), 'grafico'],
             ].map(([titulo, valor, icone], i) => (
               <CartaoIndicador
                 key={titulo}
@@ -112,29 +84,11 @@ export default function VisaoGeral({
           </div>
           <div className="grade-indicadores grade-secundaria">
             {[
-              [
-                'Novos clientes',
-                indicadores.clientes_novos,
-                'Primeira compra no escritório',
-              ],
-              [
-                'Aberturas por fábrica',
-                indicadores.aberturas_cliente_fabrica,
-                'Novas relações cliente–fábrica',
-              ],
-              [
-                'Clientes reativados',
-                indicadores.clientes_reativados,
-                'Retorno após 90 dias sem compra',
-              ],
+              ['Novos clientes', indicadores.clientes_novos, 'Primeira compra no escritório'],
+              ['Aberturas por fábrica', indicadores.aberturas_cliente_fabrica, 'Novas relações cliente–fábrica'],
+              ['Clientes reativados', indicadores.clientes_reativados, 'Retorno após 90 dias sem compra'],
             ].map(([titulo, valor, detalhe]) => (
-              <CartaoIndicador
-                key={titulo}
-                titulo={titulo}
-                valor={valor}
-                detalhe={detalhe}
-                icone="clientes"
-              />
+              <CartaoIndicador key={titulo} titulo={titulo} valor={valor} detalhe={detalhe} icone="clientes" />
             ))}
           </div>
           <EstadoConsulta
@@ -148,30 +102,15 @@ export default function VisaoGeral({
               className="cartao-evolucao"
               acao={<Icone nome="grafico" />}
             >
-              <GraficoMensal
-                dados={dados.faturamento_mensal}
-                mesSelecionado={mesAtivo}
-              />
+              <GraficoMensal dados={dados.faturamento_mensal} mesSelecionado={mesAtivo} />
             </Cartao>
-            <Cartao
-              titulo="Fábricas em destaque"
-              descricao="Participação em valor vendido"
-            >
+            <Cartao titulo="Fábricas em destaque" descricao="Participação em valor vendido">
               <RankingBarras itens={dados.fabricas} />
             </Cartao>
-            <Cartao
-              titulo="Principais clientes"
-              descricao="Relacionamentos que movimentam sua carteira"
-            >
-              <RankingBarras
-                itens={dados.clientes}
-                aoSelecionar={aoAbrirCliente}
-              />
+            <Cartao titulo="Principais clientes" descricao="Relacionamentos que movimentam sua carteira">
+              <RankingBarras itens={dados.clientes} aoSelecionar={aoAbrirCliente} />
             </Cartao>
-            <Cartao
-              titulo="Vendas por região"
-              descricao="Regiões imediatas a partir da localização do cliente"
-            >
+            <Cartao titulo="Vendas por região" descricao="Regiões imediatas a partir da localização do cliente">
               <RankingBarras
                 itens={(dados.regioes || []).map((r) => ({
                   ...r,
@@ -180,10 +119,7 @@ export default function VisaoGeral({
                 }))}
               />
             </Cartao>
-            <Cartao
-              titulo="Produtos em destaque"
-              descricao="Ranking por valor dos itens vendidos"
-            >
+            <Cartao titulo="Produtos em destaque" descricao="Ranking por valor dos itens vendidos">
               <RankingBarras
                 itens={(dados.produtos || []).map((p) => ({
                   ...p,
@@ -191,64 +127,37 @@ export default function VisaoGeral({
                 }))}
               />
             </Cartao>
-            <Cartao
-              titulo="Novas relações comerciais"
-              descricao="Primeira compra de cada cliente na fábrica"
-            >
-              <ul
-                className="lista-aberturas"
-                tabIndex={0}
-                aria-label="Novas relações comerciais"
-              >
+            <Cartao titulo="Novas relações comerciais" descricao="Primeira compra de cada cliente na fábrica">
+              <ul className="lista-aberturas" tabIndex={0} aria-label="Novas relações comerciais">
                 {(dados.aberturas || []).map((a) => (
                   <li key={`${a.cliente_id}:${a.fabrica}`}>
                     <span className="avatar avatar-pequeno">
                       <Icone nome="clientes" tamanho={16} />
                     </span>
                     <div>
-                      <button
-                        className="botao-detalhes"
-                        onClick={() => aoAbrirCliente(a.cliente_id)}
-                      >
+                      <button className="botao-detalhes" onClick={() => aoAbrirCliente(a.cliente_id)}>
                         {a.cliente}
                       </button>
                       <p>
                         {a.fabrica} · {a.data}
                       </p>
-                      {a.novo_no_escritorio && (
-                        <span className="etiqueta">Novo no escritório</span>
-                      )}
+                      {a.novo_no_escritorio && <span className="etiqueta">Novo no escritório</span>}
                     </div>
                   </li>
                 ))}
               </ul>
-              {!dados.aberturas?.length && (
-                <p className="texto-vazio">Nenhuma abertura no período.</p>
-              )}
+              {!dados.aberturas?.length && <p className="texto-vazio">Nenhuma abertura no período.</p>}
             </Cartao>
-            <Cartao
-              titulo="Fábricas em crescimento"
-              descricao="Comparação com o mês anterior"
-            >
-              <ul
-                className="lista-clientes"
-                tabIndex={0}
-                aria-label="Fábricas em crescimento"
-              >
+            <Cartao titulo="Fábricas em crescimento" descricao="Comparação com o mês anterior">
+              <ul className="lista-clientes" tabIndex={0} aria-label="Fábricas em crescimento">
                 {(dados.fabricas_quentes || []).map((f) => (
                   <li key={f.nome}>
                     <span>{f.nome}</span>
-                    <strong className="etiqueta etiqueta-sucesso">
-                      +{f.crescimento}%
-                    </strong>
+                    <strong className="etiqueta etiqueta-sucesso">+{f.crescimento}%</strong>
                   </li>
                 ))}
               </ul>
-              {!dados.fabricas_quentes?.length && (
-                <p className="texto-vazio">
-                  Sem crescimento comparável no período.
-                </p>
-              )}
+              {!dados.fabricas_quentes?.length && <p className="texto-vazio">Sem crescimento comparável no período.</p>}
             </Cartao>
             <Cartao
               titulo="Sua próxima conversa começa aqui"
@@ -257,8 +166,7 @@ export default function VisaoGeral({
             >
               <Icone nome="oportunidade" tamanho={32} />
               <p>
-                Encontre clientes para o segundo pedido, fábricas próximas da
-                inatividade e oportunidades de reposição.
+                Encontre clientes para o segundo pedido, fábricas próximas da inatividade e oportunidades de reposição.
               </p>
               <button className="botao-secundario" onClick={aoAbrirAlertas}>
                 Explorar alertas <Icone nome="seta" tamanho={16} />
@@ -266,10 +174,9 @@ export default function VisaoGeral({
             </Cartao>
           </div>
           <p className="nota-painel">
-            Indicadores calculados sobre o histórico importado. Novos clientes
-            também contam como aberturas por fábrica.{' '}
-            {indicadores.pedidos_sem_itens} pedidos sem itens: seus valores
-            entram no faturamento, mas não no ranking de produtos.
+            Indicadores calculados sobre o histórico importado. Novos clientes também contam como aberturas por fábrica.{' '}
+            {indicadores.pedidos_sem_itens} pedidos sem itens: seus valores entram no faturamento, mas não no ranking de
+            produtos.
           </p>
         </>
       )}

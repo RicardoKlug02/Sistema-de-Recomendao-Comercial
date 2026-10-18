@@ -1,13 +1,7 @@
 import Cartao from './Cartao'
-import Icone from './comercial/Icone'
+import Icone from './Icone'
 
-export default function CartaoIndicador({
-  titulo,
-  valor,
-  detalhe,
-  icone = 'painel',
-  destaque = false,
-}) {
+export default function CartaoIndicador({ titulo, valor, detalhe, icone = 'painel', destaque = false }) {
   return (
     <Cartao
       titulo={titulo}

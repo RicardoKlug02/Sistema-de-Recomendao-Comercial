@@ -1,16 +1,8 @@
-import Marca from './comercial/Marca'
+import Marca from './Marca'
 
-export default function CartaoAutenticacao({
-  titulo,
-  subtitulo,
-  referenciaTitulo,
-  children,
-}) {
+export default function CartaoAutenticacao({ titulo, subtitulo, referenciaTitulo, children }) {
   return (
-    <section
-      className="cartao-autenticacao"
-      aria-labelledby="titulo-autenticacao"
-    >
+    <section className="cartao-autenticacao" aria-labelledby="titulo-autenticacao">
       <header className="cabecalho-autenticacao">
         <Marca />
         <h1 id="titulo-autenticacao" ref={referenciaTitulo} tabIndex={-1}>

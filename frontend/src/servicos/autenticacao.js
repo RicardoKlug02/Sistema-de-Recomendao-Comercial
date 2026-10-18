@@ -10,8 +10,9 @@ export async function entrar({ email, senha }) {
     body: new URLSearchParams({ username: email.trim(), password: senha }) })
   const usuario = { nome: dados.usuario_nome, email: dados.usuario_email, perfil: dados.usuario_perfil }
   salvarSessao({ access_token: dados.access_token, usuario })
-  return { usuario }
+  return usuario
 }
 export async function registrar({ nome, email, senha }) {
   return solicitar('/auth/registrar', { method: 'POST', body: { nome, email, senha } })
 }
+export const ehGestor = (usuario) => ['admin', 'gestor'].includes(usuario.perfil)

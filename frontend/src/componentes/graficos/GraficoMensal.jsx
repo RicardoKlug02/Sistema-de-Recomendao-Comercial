@@ -1,17 +1,11 @@
-import { formatarMoeda } from '../../servicos/dadosPainel'
+import { formatarMoeda } from '../../servicos/formatacao'
 
-// Barras CSS: sem biblioteca adicional. Cada valor permanece acessível por teclado e leitor de tela.
 export default function GraficoMensal({ dados = [], mesSelecionado }) {
   const maior = Math.max(1, ...dados.map((item) => Number(item.valor)))
-  if (!dados.length)
-    return <p className="texto-vazio">Ainda não há histórico de faturamento.</p>
+  if (!dados.length) return <p className="texto-vazio">Ainda não há histórico de faturamento.</p>
   return (
     <div className="area-grafico">
-      <div
-        className="grafico-colunas"
-        role="list"
-        aria-label="Faturamento por mês"
-      >
+      <div className="grafico-colunas" role="list" aria-label="Faturamento por mês">
         {dados.map((item) => (
           <div
             className={`coluna-mensal ${item.mes === mesSelecionado ? 'selecionada' : ''}`}
@@ -35,8 +29,7 @@ export default function GraficoMensal({ dados = [], mesSelecionado }) {
         ))}
       </div>
       <p className="legenda-grafico">
-        <span /> Faturamento mensal <span className="legenda-selecionada" />{' '}
-        Período selecionado
+        <span /> Faturamento mensal <span className="legenda-selecionada" /> Período selecionado
       </p>
     </div>
   )

@@ -7,8 +7,6 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
-        // Opcional em desenvolvimento: permite conferir a interface contra a API publicada.
-        // A compilação continua usando a mesma origem, como exige o deploy atual da main.
         '/api': {
           target: env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
           changeOrigin: true,

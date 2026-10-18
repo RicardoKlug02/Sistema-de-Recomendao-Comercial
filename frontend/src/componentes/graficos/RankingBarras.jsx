@@ -1,11 +1,6 @@
-import { formatarMoeda } from '../../servicos/dadosPainel'
+import { formatarMoeda } from '../../servicos/formatacao'
 
-// A escala relativa compara valores reais; não calcula percentuais de crescimento.
-export default function RankingBarras({
-  itens = [],
-  aoSelecionar,
-  vazio = 'Sem vendas no período.',
-}) {
+export default function RankingBarras({ itens = [], aoSelecionar, vazio = 'Sem vendas no período.' }) {
   const maior = Math.max(1, ...itens.map((item) => Number(item.valor)))
   if (!itens.length) return <p className="texto-vazio">{vazio}</p>
   return (
@@ -13,14 +8,9 @@ export default function RankingBarras({
       {itens.map((item, indice) => (
         <li key={item.chave ?? item.id ?? `${item.nome}-${indice}`}>
           <div className="ranking-rotulo">
-            <span className="ranking-posicao">
-              {String(indice + 1).padStart(2, '0')}
-            </span>
+            <span className="ranking-posicao">{String(indice + 1).padStart(2, '0')}</span>
             {aoSelecionar ? (
-              <button
-                className="botao-detalhes"
-                onClick={() => aoSelecionar(item.id)}
-              >
+              <button className="botao-detalhes" onClick={() => aoSelecionar(item.id)}>
                 {item.nome}
               </button>
             ) : (

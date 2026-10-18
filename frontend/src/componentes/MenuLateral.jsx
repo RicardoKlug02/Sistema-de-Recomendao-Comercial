@@ -1,29 +1,16 @@
-import Marca from './comercial/Marca'
-import Icone from './comercial/Icone'
+import Marca from './Marca'
+import Icone from './Icone'
+import { secoes } from '../secoes'
+import { ehGestor } from '../servicos/autenticacao'
 
-const itens = [
-  ['painel', 'Visão geral'],
-  ['clientes', 'Clientes'],
-  ['alertas', 'Alertas'],
-  ['relatorios', 'Relatórios'],
-  ['analise', 'Análise do sistema'],
-  ['regras', 'Regras de negócio'],
-  ['importacoes', 'Importação'],
-  ['usuarios', 'Usuários'],
-]
 const perfis = {
   admin: 'Administrador',
   gestor: 'Gestor',
   vendedor: 'Representante',
 }
 
-export default function MenuLateral({
-  usuario,
-  secaoAtiva,
-  aoNavegar,
-  aoSair,
-}) {
-  const gestor = ['admin', 'gestor'].includes(usuario.perfil)
+export default function MenuLateral({ usuario, secaoAtiva, aoNavegar, aoSair }) {
+  const gestor = ehGestor(usuario)
   return (
     <aside className="menu-lateral">
       <a
@@ -38,9 +25,9 @@ export default function MenuLateral({
       </a>
       <p className="legenda-menu">ESPAÇO COMERCIAL</p>
       <nav aria-label="Menu principal">
-        {itens
-          .filter(([id]) => gestor || !['usuarios', 'importacoes'].includes(id))
-          .map(([id, titulo]) => (
+        {secoes
+          .filter((s) => gestor || !s.restrita)
+          .map(({ id, titulo }) => (
             <a
               key={id}
               href={`#${id}`}
