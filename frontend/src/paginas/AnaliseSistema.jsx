@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
-import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
-import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
+import CabecalhoPagina from '../componentes/CabecalhoPagina'
+import Seletor from '../componentes/Seletor'
+import EstadoConsulta from '../componentes/EstadoConsulta'
 import Cartao from '../componentes/Cartao'
 import CartaoIndicador from '../componentes/CartaoIndicador'
-import useDados from '../servicos/useDados'
-import { dataLocal, formatarData } from '../servicos/datas'
+import useDados from '../hooks/useDados'
+import { dataLocal, formatarData } from '../servicos/formatacao'
 
 const metricas = [
   ['clientes_inativos', 'Clientes inativos', '90 dias ou mais sem compra'],
@@ -29,8 +29,8 @@ export default function AnaliseSistema({ fabricas = [], vendedores = [] }) {
     <div className="filtros-comerciais faixa-filtros">
       <label>Início da implantação<input type="date" value={implantacao} max={fim} onChange={(e) => setImplantacao(e.target.value)} /></label>
       <label>Acompanhar até<input type="date" value={fim} max={dataLocal()} onChange={(e) => setFim(e.target.value)} /></label>
-      <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={setFabrica} />
-      <label>Vendedor<select aria-label="Vendedor" value={vendedor} onChange={(e) => setVendedor(e.target.value)}><option value="">Toda a equipe</option>{vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}</select></label>
+      <Seletor rotulo="Fábrica" todos="Todas as fábricas" opcoes={fabricas} valor={fabrica} aoMudar={setFabrica} />
+      <Seletor rotulo="Vendedor" todos="Toda a equipe" opcoes={vendedores} valor={vendedor} aoMudar={setVendedor} />
     </div>
     {!valido && <p role="alert">Informe datas válidas, com fim igual ou posterior à implantação e até hoje.</p>}
     <EstadoConsulta carregando={resposta.carregando} erro={resposta.erro} />

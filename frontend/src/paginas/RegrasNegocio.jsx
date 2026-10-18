@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react'
-import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
+import CabecalhoPagina from '../componentes/CabecalhoPagina'
 import Cartao from '../componentes/Cartao'
-import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
-import Paginacao from '../componentes/comercial/Paginacao'
-import useDados from '../servicos/useDados'
+import EstadoConsulta from '../componentes/EstadoConsulta'
+import Paginacao from '../componentes/Paginacao'
+import useDados from '../hooks/useDados'
 import { solicitar } from '../servicos/api'
-import { dataLocal, formatarData } from '../servicos/datas'
+import { dataLocal, formatarData } from '../servicos/formatacao'
 
 const ufs = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ')
 function inicial() { return { tipo: 'SUBSTITUICAO', fabrica_id: '', cliente_id: '', uf: '', codigo_antigo: '', codigo_novo: '', excecoes_clientes: [], excecoes_vendedores: [], excecoes_clientes_detalhes: [], inicio: dataLocal(), fim: '', ativa: true, motivo: '' } }

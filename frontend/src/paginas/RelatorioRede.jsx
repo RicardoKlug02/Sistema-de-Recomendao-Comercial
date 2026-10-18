@@ -1,11 +1,11 @@
 import { useState } from 'react'
 
-import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
-import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
+import EstadoConsulta from '../componentes/EstadoConsulta'
+import Seletor from '../componentes/Seletor'
 import Cartao from '../componentes/Cartao'
-import useDados from '../servicos/useDados'
+import useDados from '../hooks/useDados'
 import { solicitar } from '../servicos/api'
-import { formatarMoeda } from '../servicos/dadosPainel'
+import { formatarMoeda } from '../servicos/formatacao'
 
 export default function RelatorioRede({ fabricas }) {
   const [rede, definirRede] = useState('')
@@ -37,7 +37,7 @@ export default function RelatorioRede({ fabricas }) {
           <option value="">Selecione uma rede</option>
           {redes.dados?.map((r) => <option key={r.nome} value={r.nome}>{r.nome} ({r.clientes} cadastros fiscais)</option>)}
         </select></label>
-        <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={definirFabrica} disabled={baixando} />
+        <Seletor rotulo="Fábrica" todos="Todas as fábricas" opcoes={fabricas} valor={fabrica} aoMudar={definirFabrica} disabled={baixando} />
         <button className="botao-principal" disabled={!rede || consulta.carregando || !consulta.dados || baixando} onClick={baixar}>{baixando ? 'Gerando PDF…' : 'Baixar PDF'}</button>
       </div>
       <EstadoConsulta carregando={redes.carregando || consulta.carregando} erro={erro || redes.erro || consulta.erro} />

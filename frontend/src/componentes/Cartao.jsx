@@ -1,14 +1,6 @@
 import { useId } from 'react'
 
-// Estrutura única para cards de indicadores, gráficos, listas e formulários.
-export default function Cartao({
-  titulo,
-  descricao,
-  id,
-  className = '',
-  acao,
-  children,
-}) {
+export default function Cartao({ titulo, descricao, id, className = '', acao, children }) {
   const identificadorTitulo = useId()
   return (
     <section

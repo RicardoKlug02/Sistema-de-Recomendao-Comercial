@@ -1,6 +1,6 @@
 import { solicitar } from './api'
-export const tamanhoMaximo = 10 * 1024 * 1024
-export function validarArquivo(arquivo) {
+const tamanhoMaximo = 10 * 1024 * 1024
+function validarArquivo(arquivo) {
   if (!arquivo) return 'Selecione as duas planilhas.'
   if (!/\.(xls|xlsx)$/i.test(arquivo.name)) return 'Envie XLS ou XLSX.'
   if (!arquivo.size || arquivo.size > tamanhoMaximo) return 'Cada arquivo deve ter entre 1 byte e 10 MB.'

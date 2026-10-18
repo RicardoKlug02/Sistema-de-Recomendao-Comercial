@@ -8,30 +8,23 @@ import Relatorios from './Relatorios'
 import AnaliseSistema from './AnaliseSistema'
 import RegrasNegocio from './RegrasNegocio'
 import MenuLateral from '../componentes/MenuLateral'
-import useDados from '../servicos/useDados'
+import useDados from '../hooks/useDados'
+import { tituloDocumento, tituloSecao } from '../secoes'
+import { ehGestor } from '../servicos/autenticacao'
 import './PainelComercial.css'
 import './Operacao.css'
 
-const secoes = {
-  painel: 'Visão geral',
-  clientes: 'Clientes',
-  alertas: 'Alertas',
-  importacoes: 'Importação',
-  usuarios: 'Usuários',
-  relatorios: 'Relatórios',
-  analise: 'Análise do sistema',
-  regras: 'Regras de negócio',
-}
-
-// O shell coordena navegação e invalidação das consultas após uma importação confirmada.
-export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
+export default function PainelComercial({ usuario, aoSair }) {
   const [secao, definirSecao] = useState('painel')
   const [clienteId, definirCliente] = useState(null)
   const [versao, definirVersao] = useState(0)
   const cadastroVendedores = useDados('/comercial/vendedores', versao)
-  const cadastroFabricas = useDados('/comercial/fabricas', versao)
+  const vendedores = cadastroVendedores.dados || []
+  const fabricas = useDados('/comercial/fabricas', versao).dados || []
+  const cadastros = { vendedores, fabricas }
   const atualizar = () => definirVersao((v) => v + 1)
-  const gestor = ['admin', 'gestor'].includes(usuario.perfil)
+  const gestor = ehGestor(usuario)
+
   function abrirCliente(id) {
     definirCliente(id)
     definirSecao('clientes')
@@ -40,69 +33,47 @@ export default function PainelComercial({ usuario, aoSair, referenciaTitulo }) {
     if (destino === 'clientes') definirCliente(null)
     definirSecao(destino)
   }
+
   useEffect(() => {
-    document.title = `${secoes[secao]} | Rio Verde Representações`
-    document.querySelector('.conteudo-painel h1')?.focus()
+    document.title = tituloDocumento(tituloSecao(secao))
   }, [secao])
+
   return (
     <div className="estrutura-painel">
       <a
         className="atalho-conteudo"
-        href="#conteudo"
+        href="#titulo-pagina"
         onClick={(e) => {
           e.preventDefault()
-          document.querySelector('.conteudo-painel h1')?.focus()
+          document.getElementById('titulo-pagina')?.focus()
         }}
       >
         Pular para o conteúdo
       </a>
-      <MenuLateral
-        usuario={usuario}
-        aoSair={aoSair}
-        secaoAtiva={secao}
-        aoNavegar={navegar}
-      />
+      <MenuLateral usuario={usuario} aoSair={aoSair} secaoAtiva={secao} aoNavegar={navegar} />
       <div className="barra-superior">
         <span>
-          Rio Verde <span>/</span> {secoes[secao]}
+          Rio Verde <span>/</span> {tituloSecao(secao)}
         </span>
-        <span>
-          {new Date().toLocaleDateString('pt-BR', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })}
-        </span>
+        <span>{new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</span>
       </div>
       {secao === 'painel' && (
         <VisaoGeral
-          vendedores={cadastroVendedores.dados || []}
-          fabricas={cadastroFabricas.dados || []}
+          {...cadastros}
           erroVendedores={cadastroVendedores.erro}
           versao={versao}
           aoAtualizar={atualizar}
           aoAbrirCliente={abrirCliente}
           aoAbrirAlertas={() => navegar('alertas')}
-          referenciaTitulo={referenciaTitulo}
         />
       )}
-      {secao === 'importacoes' && gestor && (
-        <Importacao usuario={usuario} aoImportar={atualizar} />
-      )}
-      {secao === 'clientes' && (
-        <Clientes key={clienteId || 'lista'} inicial={clienteId} fabricas={cadastroFabricas.dados || []} />
-      )}
-      {secao === 'alertas' && (
-        <Alertas
-          fabricas={cadastroFabricas.dados || []}
-          vendedores={cadastroVendedores.dados || []}
-          aoAbrirCliente={abrirCliente}
-        />
-      )}
+      {secao === 'clientes' && <Clientes clienteId={clienteId} aoSelecionar={definirCliente} fabricas={fabricas} />}
+      {secao === 'alertas' && <Alertas {...cadastros} aoAbrirCliente={abrirCliente} />}
+      {secao === 'relatorios' && <Relatorios {...cadastros} />}
+      {secao === 'analise' && <AnaliseSistema {...cadastros} />}
+      {secao === 'regras' && <RegrasNegocio {...cadastros} gestor={gestor} aoAlterar={atualizar} />}
+      {secao === 'importacoes' && gestor && <Importacao aoImportar={atualizar} />}
       {secao === 'usuarios' && gestor && <Usuarios />}
-      {secao === 'relatorios' && <Relatorios fabricas={cadastroFabricas.dados || []} vendedores={cadastroVendedores.dados || []} />}
-      {secao === 'regras' && <RegrasNegocio fabricas={cadastroFabricas.dados || []} vendedores={cadastroVendedores.dados || []} gestor={gestor} aoAlterar={atualizar} />}
-      {secao === 'analise' && <AnaliseSistema fabricas={cadastroFabricas.dados || []} vendedores={cadastroVendedores.dados || []} />}
     </div>
   )
 }

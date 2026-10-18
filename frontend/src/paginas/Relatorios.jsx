@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
-import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
-import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
-import Paginacao from '../componentes/comercial/Paginacao'
+import CabecalhoPagina from '../componentes/CabecalhoPagina'
+import EstadoConsulta from '../componentes/EstadoConsulta'
+import Seletor from '../componentes/Seletor'
+import Paginacao from '../componentes/Paginacao'
 import Cartao from '../componentes/Cartao'
-import useDados from '../servicos/useDados'
+import useDados from '../hooks/useDados'
 import { solicitar } from '../servicos/api'
-import { formatarMoeda } from '../servicos/dadosPainel'
-import { dataLocal, diasAtras, formatarData } from '../servicos/datas'
+import { dataLocal, diasAtras, formatarData, formatarMoeda, formatarNumero } from '../servicos/formatacao'
 import RelatorioRede from './RelatorioRede'
 
 const tipos = { rede: 'Códigos comprados pela rede', mapa: 'Mapa cliente x fábrica', reativacoes: 'Resultado das reativações', inativos: 'Clientes inativos', precos: 'Evolução dos preços por código', regioes: 'Regiões imediatas por vendedor' }
@@ -15,8 +14,8 @@ function valorCelula(valor, formato) {
   if (valor === null || valor === undefined) return formato === 'percentual' ? 'Sem base' : '—'
   if (formato === 'moeda') return formatarMoeda(valor)
   if (formato === 'data') return formatarData(valor)
-  if (formato === 'percentual') return `${valor > 0 ? '+' : ''}${valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
-  if (formato === 'numero') return valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+  if (formato === 'percentual') return `${valor > 0 ? '+' : ''}${formatarNumero(valor)}%`
+  if (formato === 'numero') return formatarNumero(valor)
   return valor
 }
 
@@ -62,8 +61,8 @@ function RelatorioOperacional({ tipo, fabricas, vendedores }) {
     <div className="filtros-comerciais faixa-filtros">
       {!posicao && <label>Data inicial<input type="date" value={inicio} max={fim} disabled={baixando} onChange={(e) => mudar(setInicio, e.target.value)} /></label>}
       <label>{posicao ? 'Posição em' : 'Data final'}<input type="date" value={fim} max={dataLocal()} disabled={baixando} onChange={(e) => mudar(setFim, e.target.value)} /></label>
-      <FiltroFabrica fabricas={fabricas} valor={fabrica} disabled={baixando} aoMudar={(v) => mudar(setFabrica, v)} />
-      <label>Vendedor<select aria-label="Vendedor" value={vendedor} disabled={baixando} onChange={(e) => mudar(setVendedor, e.target.value)}><option value="">Toda a equipe</option>{vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}</select></label>
+      <Seletor rotulo="Fábrica" todos="Todas as fábricas" opcoes={fabricas} valor={fabrica} disabled={baixando} aoMudar={(v) => mudar(setFabrica, v)} />
+      <Seletor rotulo="Vendedor" todos="Toda a equipe" opcoes={vendedores} valor={vendedor} disabled={baixando} aoMudar={(v) => mudar(setVendedor, v)} />
       <label>Rede<select aria-label="Rede" value={rede} disabled={baixando} onChange={(e) => mudar(setRede, e.target.value)}><option value="">Todas as redes</option>{redes.dados?.map((r) => <option key={r.nome}>{r.nome}</option>)}</select></label>
       {tipo === 'mapa' && <label>Situação<select value={status} aria-label="Situação" disabled={baixando} onChange={(e) => mudar(setStatus, e.target.value)}><option value="">Todas</option>{['Ativo', 'Inativo', ...(incluirSemCompra ? ['Sem compra'] : [])].map((s) => <option key={s}>{s}</option>)}</select></label>}
       {tipo === 'reativacoes' && <label>Tipo de reativação<select aria-label="Tipo de reativação" value={escopo} disabled={baixando} onChange={(e) => mudar(setEscopo, e.target.value)}><option value="cliente">Cliente no escritório</option><option value="fabrica">Cliente x fábrica</option></select></label>}
