@@ -44,6 +44,8 @@
 }
 .formulario-carga {
   display: grid;
+  /* minmax(0, 1fr) deixa a tabela de conferência rolar em vez de alargar a página. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   font-size: 13px;
   line-height: 1.8;
@@ -68,8 +70,19 @@
   color: #456638;
   cursor: pointer;
 }
-.formulario-carga input[type='checkbox'] {
-  display: inline-block;
+.formulario-carga .confirmacao-carga {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: inherit;
+}
+.formulario-carga .confirmacao-carga input[type='checkbox'] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
 }
 .formulario-carga .botao-principal {
   width: fit-content;
