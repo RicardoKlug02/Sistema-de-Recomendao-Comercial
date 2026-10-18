@@ -111,7 +111,7 @@ export default function Importacao({ aoImportar }) {
               {conferencia.processados > 100 && (
                 <p>A tabela mostra os primeiros 100 pedidos. Os totais incluem todos os pedidos.</p>
               )}
-              <label>
+              <label className="confirmacao-carga">
                 <input
                   type="checkbox"
                   checked={confirmado}
