@@ -9,6 +9,7 @@ def main():
     from sqlalchemy import text, inspect
     from alembic import command
     from alembic.config import Config
+    from alembic.script import ScriptDirectory
     from src.backend.app.core.database import engine
     esquema = "codex_check_" + uuid.uuid4().hex
     with engine.connect() as connection:
@@ -23,7 +24,7 @@ def main():
             tabelas = inspect(connection).get_table_names(schema=esquema)
             assert all(n in tabelas for n in ("clientes", "vendas", "itens_venda", "importacoes", "usuarios"))
             revisao = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-            assert revisao == "20260929_operacao"
+            assert revisao == ScriptDirectory.from_config(config).get_current_head()
             print("Migrações verificadas em PostgreSQL: criação completa e revisão final corretas.")
         finally:
             transaction.rollback()

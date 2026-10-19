@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEstadoPagina, useRolagemPagina } from '../servicos/estadoPaginas'
 import Cartao from '../componentes/Cartao'
+import HistoricoDisponivel from '../componentes/HistoricoDisponivel'
 import CartaoIndicador from '../componentes/CartaoIndicador'
 import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
 import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
@@ -9,6 +10,7 @@ import RankingBarras from '../componentes/graficos/RankingBarras'
 import useDados from '../servicos/useDados'
 import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
 import { formatarMoeda } from '../servicos/dadosPainel'
+import { formatarData } from '../servicos/datas'
 
 // Mantém os filtros e contratos da main; apresentação e gráficos são independentes da API.
 export default function VisaoGeral({
@@ -21,15 +23,16 @@ export default function VisaoGeral({
   aoAbrirAlertas,
   referenciaTitulo,
 }) {
-  const [mes, definirMes] = useState('')
-  const [vendedor, definirVendedor] = useState('')
-  const [fabrica, definirFabrica] = useState('')
+  const [mes, definirMes] = useEstadoPagina('painel.mes', '')
+  const [vendedor, definirVendedor] = useEstadoPagina('painel.vendedor', '')
+  const [fabrica, definirFabrica] = useEstadoPagina('painel.fabrica', '')
   const parametros = new URLSearchParams()
   if (mes) parametros.set('mes', mes)
   if (vendedor) parametros.set('vendedor_id', vendedor)
   if (fabrica) parametros.set('fabrica_id', fabrica)
   const consulta = useDados(`/comercial/painel?${parametros}`, versao)
   const dados = consulta.dados
+  useRolagemPagina('painel', !!dados)
   const indicadores = dados?.indicadores
   const mesAtivo = mes || dados?.mes || ''
   return (
@@ -43,6 +46,7 @@ export default function VisaoGeral({
           <span className="ponto-status" /> Dados do histórico importado
         </span>
       </CabecalhoPagina>
+      <HistoricoDisponivel versao={versao} />
       <div className="filtros-comerciais faixa-filtros">
         <label>
           <span>
@@ -113,14 +117,14 @@ export default function VisaoGeral({
           <div className="grade-indicadores grade-secundaria">
             {[
               [
-                'Novos clientes',
+                'Novos clientes na base',
                 indicadores.clientes_novos,
-                'Primeira compra no escritório',
+                'Primeira compra registrada na base',
               ],
               [
                 'Aberturas por fábrica',
                 indicadores.aberturas_cliente_fabrica,
-                'Novas relações cliente–fábrica',
+                'Primeira compra registrada na base por fábrica',
               ],
               [
                 'Clientes reativados',
@@ -165,7 +169,7 @@ export default function VisaoGeral({
             >
               <RankingBarras
                 itens={dados.clientes}
-                aoSelecionar={aoAbrirCliente}
+                aoSelecionar={(id) => aoAbrirCliente(id, { fabrica })}
               />
             </Cartao>
             <Cartao
@@ -187,13 +191,13 @@ export default function VisaoGeral({
               <RankingBarras
                 itens={(dados.produtos || []).map((p) => ({
                   ...p,
-                  detalhe: `Código ${p.sku || 'não informado'} · ${p.quantidade} unidades vendidas`,
+                  detalhe: `${p.fabrica || 'Fábrica não informada'} · Código ${p.sku || 'não informado'} · ${p.quantidade} unidades vendidas`,
                 }))}
               />
             </Cartao>
             <Cartao
               titulo="Novas relações comerciais"
-              descricao="Primeira compra de cada cliente na fábrica"
+              descricao="Primeira compra registrada na base de cada cliente na fábrica"
             >
               <ul
                 className="lista-aberturas"
@@ -208,15 +212,15 @@ export default function VisaoGeral({
                     <div>
                       <button
                         className="botao-detalhes"
-                        onClick={() => aoAbrirCliente(a.cliente_id)}
+                        onClick={() => aoAbrirCliente(a.cliente_id, { fabrica })}
                       >
                         {a.cliente}
                       </button>
                       <p>
-                        {a.fabrica} · {a.data}
+                        {a.fabrica} · {formatarData(a.data)}
                       </p>
                       {a.novo_no_escritorio && (
-                        <span className="etiqueta">Novo no escritório</span>
+                        <span className="etiqueta">Primeira compra registrada na base</span>
                       )}
                     </div>
                   </li>
@@ -266,8 +270,9 @@ export default function VisaoGeral({
             </Cartao>
           </div>
           <p className="nota-painel">
-            Indicadores calculados sobre o histórico importado. Novos clientes
-            também contam como aberturas por fábrica.{' '}
+            Novos clientes e aberturas por fábrica representam a primeira compra
+            registrada na base. Importar históricos anteriores pode alterar as
+            datas e as classificações. Novos clientes também contam como aberturas por fábrica.{' '}
             {indicadores.pedidos_sem_itens} pedidos sem itens: seus valores
             entram no faturamento, mas não no ranking de produtos.
           </p>

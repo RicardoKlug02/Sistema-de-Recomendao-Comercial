@@ -43,6 +43,7 @@ def comparar_produtos(registros, ref, suficiente):
             fabricas_incompletas.add(r.fabrica_id)
             continue
         p = produtos.setdefault(r.produto_id, {"nome": r.produto_nome, "sku": r.sku, "fabrica_id": r.fabrica_id,
+                                             "fabrica": getattr(r,'fabrica_nome',''),
                                              "compras": defaultdict(float)})
         p["compras"][r.data_venda] += r.quantidade
     resultado = []
@@ -54,5 +55,5 @@ def comparar_produtos(registros, ref, suficiente):
         c = comparacao(recente, habitual, suficiente and datas_anteriores >= 2 and not incompleto)
         if incompleto:
             c["status"] = "ITENS_INCOMPLETOS"
-        resultado.append({"produto_id": pid, "nome": p["nome"], "sku": p["sku"], **c})
+        resultado.append({"produto_id": pid, "nome": p["nome"], "sku": p["sku"], "fabrica_id": p['fabrica_id'], "fabrica": p['fabrica'], **c})
     return sorted(resultado, key=lambda p: (p["variacao_pct"] is None, p["variacao_pct"] or 0, p["nome"]))

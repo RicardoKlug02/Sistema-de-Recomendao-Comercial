@@ -30,18 +30,19 @@ class MotorRegras:
     def aplica_cliente(self, r, cid):
         return r.cliente_id is None or (cid is not None and self.identidade.id(r.cliente_id) == self.identidade.id(cid))
 
-    def mapa(self, cid=None, ref=None):
+    def mapa(self, cid=None, ref=None, data_compra=None):
         ref = ref or hoje_comercial()
-        chave = (self.identidade.id(cid) if cid is not None else None,ref)
+        chave = (self.identidade.id(cid) if cid is not None else None,ref,data_compra)
         if chave not in self._mapas:
-            regras = [r for r in self.regras if r.tipo=='SUBSTITUICAO' and self.vigente(r,ref) and self.aplica_cliente(r,cid)]
+            regras = [r for r in self.regras if r.tipo=='SUBSTITUICAO' and self.vigente(r,ref) and self.aplica_cliente(r,cid)
+                      and (data_compra is None or getattr(r,'unificar_historico',True) or data_compra >= r.inicio)]
             # A substituição específica do cliente prevalece sobre a geral da fábrica.
             regras.sort(key=lambda r:r.cliente_id is not None)
             self._mapas[chave] = {r.produto_origem_id:r.produto_destino_id for r in regras}
         return self._mapas[chave]
 
-    def produto(self, pid, cid=None, ref=None):
-        mapa = self.mapa(cid,ref)
+    def produto(self, pid, cid=None, ref=None, data_compra=None):
+        mapa = self.mapa(cid,ref,data_compra)
         vistos = set()
         while pid in mapa:
             if pid in vistos:
@@ -53,16 +54,15 @@ class MotorRegras:
     def vendedor(self, cid, fid, ref, consolidar=True):
         chave=(ref,consolidar)
         if chave not in self._vendedores:
-            por_fabrica,global_={},{}
+            global_={}
             for v in (self.db.query(Venda.cliente_id,Venda.fabrica_id,Venda.vendedor_id)
                       .filter(Venda.data_venda<=ref).order_by(Venda.data_venda,Venda.id)):
                 cliente=self.identidade.id(v.cliente_id) if consolidar else v.cliente_id
-                por_fabrica[(cliente,v.fabrica_id)]=v.vendedor_id
                 global_[cliente]=v.vendedor_id
-            self._vendedores[chave]=(por_fabrica,global_)
-        por_fabrica,global_=self._vendedores[chave]
+            self._vendedores[chave]=global_
+        global_=self._vendedores[chave]
         cliente=self.identidade.id(cid) if consolidar else cid
-        return por_fabrica.get((cliente,fid),global_.get(cliente))
+        return global_.get(cliente)
 
     def bloqueada(self, cid, fid, ref=None, consolidar=True):
         ref = ref or hoje_comercial()
@@ -72,7 +72,8 @@ class MotorRegras:
             regras = [r for r in self.regras if r.tipo=='RESTRICAO' and r.fabrica_id==fid
                       and self.vigente(r,ref) and self.aplica_cliente(r,cid)]
             if regras:
-                vendedor=self.vendedor(cid,fid,ref,consolidar)
+                # A exceção pertence ao cliente comercial, mesmo no detalhe de um CNPJ.
+                vendedor=self.vendedor(cid,fid,ref)
                 comercial=self.identidade.id(cid)
                 regras=[r for r in regras if comercial not in {self.identidade.id(c) for c in (r.excecoes_clientes or [])}
                         and vendedor not in (r.excecoes_vendedores or [])]
@@ -82,8 +83,15 @@ class MotorRegras:
 
     def produto_sql(self, cliente_expr, ref):
         def expressao(cid):
-            mapa = {pid:self.produto(pid,cid,ref) for pid in self.mapa(cid,ref)}
-            return case(mapa,value=ItemVenda.produto_id,else_=ItemVenda.produto_id) if mapa else ItemVenda.produto_id
+            from datetime import date
+            def por_data(data_compra):
+                mapa = {pid:self.produto(pid,cid,ref,data_compra) for pid in self.mapa(cid,ref,data_compra)}
+                return case(mapa,value=ItemVenda.produto_id,else_=ItemVenda.produto_id) if mapa else ItemVenda.produto_id
+            inicios = sorted({r.inicio for r in self.regras if r.tipo=='SUBSTITUICAO'
+                              and self.vigente(r,ref) and self.aplica_cliente(r,cid)
+                              and not getattr(r,'unificar_historico',True)}, reverse=True)
+            casos = [(Venda.data_venda >= inicio,por_data(inicio)) for inicio in inicios]
+            return case(*casos,else_=por_data(date.min)) if casos else por_data(date.min)
         geral = expressao(None)
         clientes = {self.identidade.id(r.cliente_id) for r in self.regras
                     if r.cliente_id is not None and r.tipo=='SUBSTITUICAO' and self.vigente(r,ref)}
@@ -97,7 +105,7 @@ class MotorRegras:
                 continue
             dados = dict(r._mapping)
             if r.produto_id is not None:
-                pid = self.produto(r.produto_id,cid,ref)
+                pid = self.produto(r.produto_id,cid,ref,r.data_venda)
                 if pid != r.produto_id:
                     p = self.produtos[pid]
                     dados.update(produto_id=pid,sku=p.sku,produto_nome=p.nome)

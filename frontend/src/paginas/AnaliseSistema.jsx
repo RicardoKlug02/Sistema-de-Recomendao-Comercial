@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEstadoPagina } from '../servicos/estadoPaginas'
 import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
 import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
 import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
@@ -14,10 +14,10 @@ const metricas = [
   ['clientes_reativados', 'Clientes reativados', 'Períodos anteriores e posteriores de igual duração'],
 ]
 export default function AnaliseSistema({ fabricas = [], vendedores = [] }) {
-  const [implantacao, setImplantacao] = useState('2026-09-29')
-  const [fim, setFim] = useState(dataLocal())
-  const [fabrica, setFabrica] = useState('')
-  const [vendedor, setVendedor] = useState('')
+  const [implantacao, setImplantacao] = useEstadoPagina('analise.implantacao', '2026-09-29')
+  const [fim, setFim] = useEstadoPagina('analise.fim', dataLocal())
+  const [fabrica, setFabrica] = useEstadoPagina('analise.fabrica', '')
+  const [vendedor, setVendedor] = useEstadoPagina('analise.vendedor', '')
   const parametros = new URLSearchParams({ implantacao, fim })
   if (fabrica) parametros.set('fabrica_id', fabrica)
   if (vendedor) parametros.set('vendedor_id', vendedor)
@@ -33,13 +33,13 @@ export default function AnaliseSistema({ fabricas = [], vendedores = [] }) {
       <label>Vendedor<select aria-label="Vendedor" value={vendedor} onChange={(e) => setVendedor(e.target.value)}><option value="">Toda a equipe</option>{vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}</select></label>
     </div>
     {!valido && <p role="alert">Informe datas válidas, com fim igual ou posterior à implantação e até hoje.</p>}
-    <EstadoConsulta carregando={resposta.carregando} erro={resposta.erro} />
+    <EstadoConsulta carregando={resposta.carregando} erro={resposta.erro} aoTentar={resposta.tentarNovamente} />
     {d && <>
       <div className="grade-indicadores">
         <CartaoIndicador titulo="Clientes da carteira inicial" valor={d.antes.clientes_total} detalhe={`Conhecidos até ${formatarData(d.base)}`} />
         <CartaoIndicador titulo="Inativos iniciais que compraram novamente" valor={d.inativos_iniciais_recuperados} detalhe="Retomaram compras após a implantação" />
         <CartaoIndicador titulo="Reativados após a implantação" valor={d.depois.clientes_reativados} detalhe={`${d.dias_periodo} dias de acompanhamento`} />
-        <CartaoIndicador titulo="Novos clientes no escopo" valor={d.novos_clientes} detalhe="Separados da carteira inicial" />
+        <CartaoIndicador titulo="Novos clientes na base" valor={d.novos_clientes} detalhe="Primeira compra registrada na base, no escopo selecionado" />
       </div>
       <Cartao titulo="Antes e depois, acompanhando os mesmos clientes">
         <p>Escopo: {d.escopo}. Posições em {formatarData(d.base)} e {formatarData(d.fim)}.</p>
@@ -51,7 +51,8 @@ export default function AnaliseSistema({ fabricas = [], vendedores = [] }) {
         <p>Produtos em abandono: ao menos três datas de compra, 60 dias sem comprar e mais de 2,5 vezes o ciclo médio histórico. Não são unidades: cada relação cliente x código conta uma vez.</p>
         <p>{d.antes.itens_sem_confirmacao} relações cliente x código sem confirmação antes e {d.depois.itens_sem_confirmacao} depois, por haver pedidos sem itens posteriores à última compra conhecida. Não são contadas como abandono confirmado.</p>
         <p>{d.antes.itens_total} relações cliente x código e os mesmos {d.antes.clientes_total} clientes compõem a base fixa do comparativo.</p>
-        {!d.antes.clientes_total && <p role="status">Sem clientes conhecidos antes da implantação para comparar. Importe o histórico anterior; novos clientes aparecem separadamente.</p>}
+        <p>Novos clientes são identificados pela primeira compra registrada na base. Importar históricos anteriores pode alterar essa classificação e a composição da carteira inicial.</p>
+        {!d.antes.clientes_total && <p role="status">Sem clientes conhecidos antes da implantação para comparar. Importe o histórico anterior; primeiras compras registradas na base aparecem separadamente.</p>}
         {!d.historico_90_dias && <p role="status">O histórico não alcança 90 dias antes da base. Os números podem subestimar a inatividade anterior.</p>}
         <p className="nota-painel">Histórico disponível desde {formatarData(d.historico_desde)}. {d.nota}</p>
         <p className="nota-painel">Esta análise ainda não vincula contatos ou ações do vendedor aos pedidos. A melhora observada não pode ser atribuída automaticamente ao sistema.</p>

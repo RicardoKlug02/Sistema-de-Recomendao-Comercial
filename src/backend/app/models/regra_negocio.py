@@ -17,6 +17,7 @@ class RegraNegocio(Base):
     uf = Column(String(2), nullable=True)
     produto_origem_id = Column(Integer, ForeignKey('produtos.id'), nullable=True)
     produto_destino_id = Column(Integer, ForeignKey('produtos.id'), nullable=True)
+    unificar_historico = Column(Boolean, nullable=False, default=True, server_default='true')
     excecoes_clientes = Column(JSON, nullable=False, default=list)
     excecoes_vendedores = Column(JSON, nullable=False, default=list)
     inicio = Column(Date, nullable=False)

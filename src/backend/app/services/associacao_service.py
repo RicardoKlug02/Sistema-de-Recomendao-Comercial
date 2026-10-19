@@ -6,6 +6,7 @@ from src.backend.app.models.item_venda import ItemVenda
 from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
 from src.backend.app.services.regras_service import MotorRegras
+from src.backend.app.services.datas import hoje_comercial
 
 
 class AssociacaoService:
@@ -18,6 +19,7 @@ class AssociacaoService:
         registros = (
             self.db.query(Venda.id, ItemVenda.produto_id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .filter(Venda.data_venda <= hoje_comercial())
             .all()
         )
 

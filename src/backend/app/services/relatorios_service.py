@@ -2,7 +2,7 @@ from src.backend.app.services.datas import hoje_comercial
 """Última compra de cada código na rede, sem misturar preços de fábricas distintas."""
 from datetime import date
 from sqlalchemy import func
-from src.backend.app.services.identidade_cliente import IdentidadeCliente
+from src.backend.app.services.identidade_cliente import IdentidadeCliente, normalizar_rede
 from src.backend.app.models import Cliente, Fabrica, Venda, Produto, ItemVenda
 
 
@@ -22,7 +22,7 @@ class RelatoriosService:
     def produtos_rede(self, rede, fabrica_id=None):
         identidade = IdentidadeCliente(self.db)
         clientes = [cid for cid,c in identidade.clientes.items()
-                    if (c.grupo_economico or '').strip().casefold() == rede.strip().casefold()]
+                    if normalizar_rede(c.grupo_economico) == normalizar_rede(rede)]
         quantidade_clientes = len(clientes)
         if not quantidade_clientes:
             raise ValueError("Rede não encontrada. Confira o cadastro de Rede de clientes nas planilhas.")

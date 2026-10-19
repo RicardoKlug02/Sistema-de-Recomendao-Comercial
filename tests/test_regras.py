@@ -124,7 +124,7 @@ def test_ciclo_especifico_do_cliente_e_restricao_invalida_sao_rejeitados(client,
     assert client.post('/api/v1/regras',json={'tipo':'RESTRICAO','fabrica_id':fs[0].id,'uf':'XX'},headers=h).status_code==422
 
 
-def test_excecao_usa_ultimo_vendedor_na_fabrica_e_cliente_libera_a_rede(db_session,base_regras):
+def test_excecao_usa_ultimo_vendedor_global_e_cliente_libera_a_rede(db_session,base_regras):
     fs,cs,ps,comprar=base_regras
     sergio,rodrigo=Vendedor(nome='Sergio teste'),Vendedor(nome='Rodrigo teste')
     db_session.add_all([sergio,rodrigo]);db_session.flush()
@@ -136,17 +136,109 @@ def test_excecao_usa_ultimo_vendedor_na_fabrica_e_cliente_libera_a_rede(db_sessi
     r=RegraNegocio(tipo='RESTRICAO',fabrica_id=fs[0].id,uf='PR',inicio=date(2026,1,1),excecoes_vendedores=[sergio.id])
     db_session.add(r);db_session.commit()
     m=MotorRegras(db_session)
-    assert m.vendedor(cs[0].id,fs[0].id,REF)==sergio.id  # Último vendedor global é Rodrigo.
-    assert not m.bloqueada(cs[1].id,fs[0].id,REF)
+    assert m.vendedor(cs[0].id,fs[0].id,REF)==rodrigo.id
+    assert m.bloqueada(cs[1].id,fs[0].id,REF)
     assert m.bloqueada(cs[2].id,fs[0].id,REF)
     alertas=ComercialService(db_session).alertas()
-    assert any(a['cliente_id']==cs[0].id and a['fabrica_id']==fs[0].id for a in alertas)
+    assert not any(a['cliente_id']==cs[0].id and a['fabrica_id']==fs[0].id for a in alertas)
     assert not any(a['cliente_id']==cs[2].id and a['fabrica_id']==fs[0].id for a in alertas)
     r.excecoes_clientes=[cs[2].id];db_session.commit()
     assert not MotorRegras(db_session).bloqueada(cs[2].id,fs[0].id,REF)
     db_session.add(RegraNegocio(tipo='RESTRICAO',fabrica_id=fs[0].id,cliente_id=cs[0].id,inicio=date(2026,1,1)))
     db_session.commit()
     assert MotorRegras(db_session).bloqueada(cs[0].id,fs[0].id,REF)  # Exceção não cancela outra regra.
+
+
+def test_excecao_sergio_em_outra_fabrica_libera_cibra_so_durante_vigencia(db_session,base_regras):
+    fs,cs,ps,comprar=base_regras
+    fs[0].nome_fantasia='Cibra'
+    sergio=Vendedor(nome='Sérgio');db_session.add(sergio);db_session.flush()
+    comprar(1,3,'2026-06-30')
+    ultima=db_session.query(Venda).order_by(Venda.data_venda.desc(),Venda.id.desc()).first()
+    ultima.vendedor_id=sergio.id
+    r=RegraNegocio(tipo='RESTRICAO',fabrica_id=fs[0].id,uf='PR',inicio=date(2026,7,1),fim=date(2026,9,30))
+    db_session.add(r);db_session.commit()
+    m=MotorRegras(db_session)
+    assert not m.bloqueada(cs[0].id,fs[0].id,date(2026,6,30))
+    assert m.bloqueada(cs[0].id,fs[0].id,date(2026,7,1))
+    assert m.bloqueada(cs[0].id,fs[0].id,date(2026,9,30))
+    assert not m.bloqueada(cs[0].id,fs[0].id,date(2026,10,1))
+    r.excecoes_vendedores=[sergio.id];db_session.commit()
+    m=MotorRegras(db_session)
+    assert m.vendedor(cs[0].id,fs[0].id,REF)==sergio.id
+    assert not m.bloqueada(cs[0].id,fs[0].id,date(2026,7,1))
+    assert not m.bloqueada(cs[0].id,fs[0].id,date(2026,7,1),consolidar=False)
+    assert ClienteService(db_session).obter_dossie_cliente(cs[0].id,ref_date=date(2026,7,1))['resumo_fabricas']
+    assert ColaborativoService(db_session).recomendar_produtos_cliente(cs[0].id,ref_date=date(2026,7,1))
+    assert sum(v.valor_total for v in db_session.query(Venda).filter(Venda.cliente_id.in_([cs[0].id,cs[1].id])))==40
+
+
+@pytest.mark.parametrize('unificar',[True,False])
+def test_substituicao_opcional_respeita_compra_e_referencia_sem_alterar_financeiro(db_session,base_regras,unificar):
+    fs,cs,ps,comprar=base_regras
+    r=substituicao(db_session,base_regras,unificar_historico=unificar)
+    r.inicio=date(2026,7,1);db_session.commit()
+    comprar(1,0,'2026-07-01');db_session.commit()
+    motor=MotorRegras(db_session)
+    assert motor.produto(ps[0].id,cs[0].id,date(2026,6,30))==ps[0].id
+    assert motor.produto(ps[0].id,cs[0].id,REF,date(2026,1,1))==(ps[1].id if unificar else ps[0].id)
+    assert motor.produto(ps[0].id,cs[0].id,REF,date(2026,7,1))==ps[1].id
+    pos=AnaliseService(db_session,date(2026,7,1),REF).produtos_posicao(REF)
+    assert pos[(cs[0].id,ps[1].id)]['datas']==(4 if unificar else 2)
+    assert ((cs[0].id,ps[0].id) in pos) is (not unificar)
+    ficha=ClienteService(db_session).obter_dossie_cliente(cs[0].id,ref_date=REF)
+    assert ficha['valor_comprado']==40
+    sugestoes=ColaborativoService(db_session).recomendar_produtos_cliente(cs[0].id,ref_date=REF)
+    assert not {ps[0].id,ps[1].id} & {p['produto_id'] for p in sugestoes}
+    assert db_session.query(ItemVenda).filter(ItemVenda.produto_id==ps[0].id).count()==4
+
+
+def test_pedido_sem_itens_na_rede_sinaliza_incerteza_ate_recompra_conhecida(db_session,base_regras,monkeypatch,client,token_admin):
+    fs,cs,ps,comprar=base_regras
+    cs[0].grupo_economico='Depecil';cs[1].grupo_economico='  DEPECIL  '
+    comprar(0,0,'2026-01-21')
+    db_session.add(Venda(cliente_id=cs[1].id,fabrica_id=fs[0].id,numero_pedido='EV-sem-itens',data_venda=date(2026,10,12),valor_total=150))
+    db_session.commit()
+    monkeypatch.setattr('src.backend.app.services.comercial_service.hoje_comercial',lambda:REF)
+    ficha=ClienteService(db_session).obter_dossie_cliente(cs[0].id,ref_date=REF)
+    assert ficha['valor_comprado']==190 and ficha['clientes_agrupados']==2
+    assert ficha['produtos_em_abandono']==[]
+    assert {p['sku'] for p in ficha['produtos_sem_confirmacao']}=={'21001','21053'}
+    assert all('não confirmada' in p['mensagem'] for p in ficha['produtos_sem_confirmacao'])
+    resposta=client.get(f'/api/v1/clientes/{cs[0].id}',headers={'Authorization':f'Bearer {token_admin}'})
+    assert resposta.status_code==200
+    assert {p['sku'] for p in resposta.json()['produtos_sem_confirmacao']}=={'21001','21053'}
+    assert not [a for a in ComercialService(db_session).alertas() if a['cliente_id']==cs[0].id and a['tipo']=='PRODUTO_EM_RISCO']
+    assert AnaliseService(db_session,date(2026,9,29),REF).posicao(REF,{cs[0].id})['itens_sem_confirmacao']==2
+    comprar(0,0,'2026-10-13');db_session.commit()
+    ficha=ClienteService(db_session).obter_dossie_cliente(cs[0].id,ref_date=REF)
+    assert {p['sku'] for p in ficha['produtos_sem_confirmacao']}=={'21053'}
+
+
+def test_api_persiste_opcao_de_historico_anterior(client,token_admin,base_regras):
+    fs,cs,ps,_=base_regras
+    h={'Authorization':f'Bearer {token_admin}'}
+    dados={'tipo':'SUBSTITUICAO','fabrica_id':fs[0].id,'codigo_antigo':'21001',
+           'codigo_novo':'21053','inicio':'2026-07-01','unificar_historico':False}
+    r=client.post('/api/v1/regras',json=dados,headers=h)
+    assert r.status_code==200,r.text
+    assert r.json()['unificar_historico'] is False
+    assert client.get('/api/v1/regras',headers=h).json()['itens'][0]['unificar_historico'] is False
+
+
+def test_mesma_rede_nao_e_vizinha_e_compra_futura_nao_entra_no_perfil(db_session,base_regras):
+    fs,cs,ps,comprar=base_regras
+    cs[0].grupo_economico='Rede   Depecil';cs[1].grupo_economico=' REDE depecil '
+    futuro=Produto(fabrica_id=fs[0].id,sku='FUTURO',nome='Produto futuro');db_session.add(futuro);db_session.flush()
+    v=Venda(cliente_id=cs[2].id,fabrica_id=fs[0].id,numero_pedido='futuro',data_venda=date(2099,1,1),valor_total=10)
+    db_session.add(v);db_session.flush();db_session.add(ItemVenda(venda_id=v.id,produto_id=futuro.id,quantidade=1,preco_unitario=10));db_session.commit()
+    s=ColaborativoService(db_session)
+    perfis=s._carregar_perfis_consumo(REF)
+    assert len(perfis)==2 and perfis['rede:rede depecil'][ps[1].id]==1
+    assert all(futuro.id not in p for p in perfis.values())
+    assert len(s.encontrar_grupos_similares(cs[0].id,ref_date=REF))==1
+    assert {r['produto_id'] for r in s.recomendar_produtos_cliente(cs[0].id,ref_date=REF)}=={ps[2].id}
+    assert s.recomendar_produtos_cliente(cs[0].id,ref_date=date(2025,12,31))==[]
 
 
 def test_api_excecoes_normaliza_clientes_valida_vendedores_e_lista_nomes(client,token_admin,db_session,base_regras):

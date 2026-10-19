@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { useEstadoPagina, useRolagemPagina } from '../servicos/estadoPaginas'
+import AcompanhamentoAlerta from '../componentes/AcompanhamentoAlerta'
+import { situacoesAcompanhamento } from '../servicos/acompanhamento'
 import useDados from '../servicos/useDados'
 import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
 import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
@@ -7,7 +10,7 @@ import Icone from '../componentes/comercial/Icone'
 import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
 
 const tipos = {
-  SEGUNDO_PEDIDO: 'Segundo pedido',
+  SEGUNDO_PEDIDO: 'Segundo pedido na base',
   CLIENTE_INATIVO: 'Cliente inativo',
   FABRICA_EM_RISCO: 'Fábrica próxima da inatividade',
   FABRICA_INATIVA: 'Fábrica inativa',
@@ -15,13 +18,16 @@ const tipos = {
 }
 
 export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
-  const [fabrica, definirFabrica] = useState('')
-  const [tipo, definirTipo] = useState('')
-  const [vendedor, definirVendedor] = useState('')
-  const [pagina, definirPagina] = useState(1)
+  const [fabrica, definirFabrica] = useEstadoPagina('alertas.fabrica', '')
+  const [tipo, definirTipo] = useEstadoPagina('alertas.tipo', '')
+  const [vendedor, definirVendedor] = useEstadoPagina('alertas.vendedor', '')
+  const [pagina, definirPagina] = useEstadoPagina('alertas.pagina', 1)
+  const [situacao, definirSituacao] = useEstadoPagina('alertas.situacao', '')
+  const [sucesso, definirSucesso] = useState('')
   const resposta = useDados(
-    `/comercial/alertas?pagina=${pagina}&tipo=${tipo}${vendedor ? `&vendedor_id=${vendedor}` : ''}${fabrica ? `&fabrica_id=${fabrica}` : ''}`,
+    `/comercial/alertas?pagina=${pagina}&tipo=${tipo}${vendedor ? `&vendedor_id=${vendedor}` : ''}${fabrica ? `&fabrica_id=${fabrica}` : ''}${situacao ? `&situacao=${situacao}` : ''}`,
   )
+  useRolagemPagina('alertas', !!resposta.dados)
   return (
     <main className="conteudo-painel" id="conteudo">
       <CabecalhoPagina
@@ -29,6 +35,7 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
         descricao="Os sinais da sua carteira, transformados em próximos passos."
       />
       <div className="filtros-comerciais faixa-filtros">
+        <label>Acompanhamento<select aria-label="Acompanhamento" value={situacao} onChange={(e) => { definirSituacao(e.target.value); definirPagina(1) }}><option value="">Todos os acompanhamentos</option>{Object.entries(situacoesAcompanhamento).map(([id, nome]) => <option value={id} key={id}>{nome}</option>)}</select></label>
         <label>
           Tipo de oportunidade
           <select
@@ -74,9 +81,11 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
       <EstadoConsulta
         carregando={resposta.carregando}
         erro={resposta.erro}
+        aoTentar={resposta.tentarNovamente}
         vazio={resposta.dados?.total === 0}
         mensagem="Nenhum alerta para os filtros selecionados."
       />
+      {sucesso && <p role="status">{sucesso}</p>}
       <div className="grade-cartoes">
         {resposta.dados?.itens.map((a) => (
           <article className="cartao cartao-alerta" key={a.id}>
@@ -92,15 +101,18 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
             </div>
             <h2>{a.cliente}</h2>
             <p className="descricao-alerta">{a.alertas?.length || 1} {(a.alertas?.length || 1) === 1 ? 'sinal' : 'sinais'} para acompanhar neste cliente.</p>
+            <p className="resumo-alerta">{Object.entries(a.resumo || { [a.tipo]: 1 }).map(([id, total]) => `${total} × ${tipos[id] || id}`).join(' · ')}</p>
+            <p><strong>Próxima ação:</strong> {a.resumo?.CLIENTE_INATIVO || a.resumo?.FABRICA_INATIVA ? 'Revisar oportunidades de retorno.' : a.resumo?.SEGUNDO_PEDIDO ? 'Verificar o contato após a primeira compra registrada na base.' : 'Conferir o histórico e preparar o próximo contato.'}</p>
             <details className="alertas-agrupados"><summary>Ver fábricas e produtos</summary><ul>
               {(a.alertas || [a]).map((sinal) => <li key={sinal.id}><strong>{tipos[sinal.tipo] || sinal.tipo}</strong><p>{sinal.descricao}</p></li>)}
             </ul></details>
             <button
               className="botao-abrir"
-              onClick={() => aoAbrirCliente(a.cliente_id)}
+              onClick={() => aoAbrirCliente(a.cliente_id, { fabrica })}
             >
               Consultar cliente <Icone nome="seta" tamanho={17} />
             </button>
+            <AcompanhamentoAlerta key={`${a.id}:${a.acompanhamento?.versao || 0}:${a.assinatura}`} grupo={a} aoSalvar={() => { definirSucesso(`Acompanhamento de ${a.cliente} salvo.`); resposta.tentarNovamente() }} />
           </article>
         ))}
       </div>
@@ -114,7 +126,8 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
         />
       )}
       <p className="nota-painel">
-        Segundo pedido após 14 dias; fábricas em risco a partir de 76 dias e
+        Segundo pedido: contato após 14 dias da primeira compra registrada na base.
+        Importar históricos anteriores pode alterar esse enquadramento. Fábricas em risco a partir de 76 dias e
         inativas a partir de 90. Alertas calculados sob consulta, sem envio
         automático.
       </p>

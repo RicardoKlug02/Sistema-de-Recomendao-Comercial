@@ -17,6 +17,7 @@ from src.backend.app.models.item_venda import ItemVenda
 from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
 from src.backend.app.services.colaborativo_service import ColaborativoService
+from src.backend.app.services.evidencia_produtos import ultimos_pedidos_sem_itens, recompra_nao_confirmada
 
 
 class ClienteService:
@@ -104,6 +105,7 @@ class ClienteService:
             "comparacao_produtos": comparar_produtos(registros_comerciais, ref, ritmo["historico_suficiente"]),
             "valor_comprado": round(sum({r.venda_id: r.valor_total for r in registros}.values()), 2),
             "pedidos_emitidos": len({r.venda_id for r in registros}),
+            "produtos_sem_confirmacao": self._analisar_produtos_sem_confirmacao(registros_comerciais),
         }
 
         if not registros:
@@ -117,7 +119,7 @@ class ClienteService:
                 "sugestoes_expansao_mix": [],
             }
 
-        recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10, fabrica_id=fabrica_id)
+        recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10, fabrica_id=fabrica_id, ref_date=ref)
         recomendacoes = [r for r in recomendacoes if not regras.bloqueada(cliente.id,r['fabrica_id'],ref,consolidar=agrupar_rede)]
         compradas = {r.fabrica_id for r in registros}
         sugestoes_fabricas = {}
@@ -184,6 +186,10 @@ class ClienteService:
                     "dias_para_vencer": dias_para_vencer,
                     "data_limite_inatividade": limite_90d.strftime("%d/%m/%Y"),
                     "status": status,
+                    "situacao_atividade": "Inativa" if dias_sem_comprar >= 90 else "Ativa",
+                    "situacao_recompra": ("Histórico insuficiente para estimar o ciclo" if len(datas)<2 else
+                                          f"Recompra atrasada há {dias_sem_comprar - ciclo_medio} dias"
+                                          if dias_sem_comprar > ciclo_medio else "Dentro do ciclo de compra"),
                     "status_gatilho": gatilho,
                     "risco_bloqueio_neste_mes": (
                         limite_90d.month == ref.month and limite_90d.year == ref.year
@@ -195,12 +201,15 @@ class ClienteService:
         return status_fabricas
 
     def _analisar_reposicao(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        sem_itens = ultimos_pedidos_sem_itens(registros)
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "compras": []})
         for r in registros:
             if r.produto_id is None:
                 continue
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
+            produtos_map[r.produto_id]["fabrica_id"] = r.fabrica_id
+            produtos_map[r.produto_id]["fabrica"] = r.fabrica_nome
             produtos_map[r.produto_id]["compras"].append((r.data_venda, r.quantidade))
 
         sugestoes = []
@@ -216,6 +225,8 @@ class ClienteService:
             intervalos = [(datas[i] - datas[i - 1]).days for i in range(1, len(datas))]
             ciclo = int(sum(intervalos) / len(intervalos))
             ultima = datas[-1]
+            if recompra_nao_confirmada(ultima, sem_itens.get(dados['fabrica_id'])):
+                continue
             dias_desde_ultima = (ref - ultima).days
             atraso = dias_desde_ultima - ciclo
 
@@ -230,12 +241,14 @@ class ClienteService:
                         "dias_desde_ultima": dias_desde_ultima,
                         "status": "Reposição Atrasada" if atraso > 0 else "Janela Ideal",
                         "volume_habitual": round(float(media_qtd), 0),
+                        "fabrica_id": dados['fabrica_id'], "fabrica": dados['fabrica'],
                     }
                 )
 
         return sugestoes
 
     def _analisar_produtos_abandono(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        sem_confirmacao = {p['produto_id'] for p in self._analisar_produtos_sem_confirmacao(registros)}
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "datas": []})
         for r in registros:
             if r.produto_id is None:
@@ -243,9 +256,13 @@ class ClienteService:
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
             produtos_map[r.produto_id]["datas"].append(r.data_venda)
+            produtos_map[r.produto_id]['fabrica_id'] = r.fabrica_id
+            produtos_map[r.produto_id]['fabrica'] = r.fabrica_nome
 
         abandonados = []
         for pid, dados in produtos_map.items():
+            if pid in sem_confirmacao:
+                continue
             datas = sorted(set(dados["datas"]))
             if len(datas) < 3:
                 continue
@@ -263,10 +280,26 @@ class ClienteService:
                         "dias_parado": dias_sem_comprar,
                         "ciclo_habitual": ciclo,
                         "total_vezes_comprado": len(datas),
+                        "fabrica_id": dados['fabrica_id'], "fabrica": dados['fabrica'],
                     }
                 )
 
         return abandonados
+
+    @staticmethod
+    def _analisar_produtos_sem_confirmacao(registros):
+        sem_itens = ultimos_pedidos_sem_itens(registros)
+        ultimos = {}
+        for r in registros:
+            if r.produto_id is not None and (r.produto_id not in ultimos or r.data_venda > ultimos[r.produto_id].data_venda):
+                ultimos[r.produto_id] = r
+        return [{"produto_id": pid, "sku": r.sku, "nome": r.produto_nome,
+                 "fabrica_id": r.fabrica_id, "fabrica": r.fabrica_nome,
+                 "ultima_compra_conhecida": r.data_venda.isoformat(),
+                 "pedido_sem_itens": sem_itens[r.fabrica_id].isoformat(),
+                 "mensagem": "Recompra não confirmada: existe pedido posterior sem itens."}
+                for pid, r in ultimos.items()
+                if recompra_nao_confirmada(r.data_venda, sem_itens.get(r.fabrica_id))]
 
     def _analisar_yoy(self, registros: list, ref: date) -> Dict[str, Any]:
         mes_recente_inicio = (ref.replace(day=1) - relativedelta(days=1)).replace(day=1)

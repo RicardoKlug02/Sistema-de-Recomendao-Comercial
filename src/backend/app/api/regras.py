@@ -22,6 +22,7 @@ class RegraEntrada(BaseModel):
     uf: str | None = None
     codigo_antigo: str | None = Field(None,max_length=150)
     codigo_novo: str | None = Field(None,max_length=150)
+    unificar_historico: bool = True
     excecoes_clientes: list[int] = Field(default_factory=list,max_length=500)
     excecoes_vendedores: list[int] = Field(default_factory=list,max_length=500)
     inicio: date = Field(default_factory=hoje_comercial)

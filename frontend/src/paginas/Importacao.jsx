@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
 import Cartao from '../componentes/Cartao'
 import useDados from '../servicos/useDados'
@@ -6,6 +6,7 @@ import { importarArquivos } from '../servicos/importacao'
 import './Importacao.css'
 
 export default function Importacao({ usuario, aoImportar }) {
+  const confirmacaoId = useId()
   const [cabecalho, definirCabecalho] = useState(null)
   const [itens, definirItens] = useState(null)
   const [erro, definirErro] = useState('')
@@ -133,7 +134,7 @@ export default function Importacao({ usuario, aoImportar }) {
                           <td>{p.pedido}</td>
                           <td>{p.cliente}</td>
                           <td>{p.fabrica}</td>
-                          <td>{p.data}</td>
+                          <td>{p.data?.split('-').reverse().join('/')}</td>
                           <td>
                             {p.valor.toLocaleString('pt-BR', {
                               style: 'currency',
@@ -152,16 +153,17 @@ export default function Importacao({ usuario, aoImportar }) {
                     todos os pedidos.
                   </p>
                 )}
-                <label>
+                <div className="confirmacao-carga">
                   <input
+                    id={confirmacaoId}
                     type="checkbox"
                     checked={confirmado}
                     disabled={enviando}
                     onChange={(e) => definirConfirmado(e.target.checked)}
                   />
-                  Confirmo que as planilhas contêm somente vendas efetivadas que
-                  geram comissão.
-                </label>
+                  <label htmlFor={confirmacaoId}>Confirmo que as planilhas contêm somente vendas efetivadas que
+                  geram comissão.</label>
+                </div>
               </section>
             )}
             <button
@@ -199,7 +201,7 @@ export default function Importacao({ usuario, aoImportar }) {
         )}
       </Cartao>
       <Cartao titulo="Histórico de importações">
-        {historico.erro && <p role="alert">{historico.erro}</p>}
+        {historico.erro && <div role="alert"><p>{historico.erro}</p><button className="botao-secundario" onClick={historico.tentarNovamente}>Tentar novamente</button></div>}
         {historico.carregando ? (
           <p role="status">Carregando histórico…</p>
         ) : (
@@ -219,7 +221,7 @@ export default function Importacao({ usuario, aoImportar }) {
                   <tr key={h.id}>
                     <td>{h.arquivo}</td>
                     <td>{h.arquivo_itens}</td>
-                    <td>{h.data}</td>
+                    <td>{h.data?.split('-').reverse().join('/')}</td>
                     <td>{h.usuario}</td>
                     <td>{h.processados}</td>
                   </tr>

@@ -1,3 +1,4 @@
+import { useEstadoPagina, useRolagemPagina } from '../servicos/estadoPaginas'
 import { useState } from 'react'
 import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
 import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
@@ -21,17 +22,17 @@ function valorCelula(valor, formato) {
 }
 
 function RelatorioOperacional({ tipo, fabricas, vendedores }) {
-  const [fabrica, setFabrica] = useState('')
-  const [vendedor, setVendedor] = useState('')
-  const [rede, setRede] = useState('')
-  const [inicio, setInicio] = useState(tipo === 'reativacoes' ? '2026-09-29' : diasAtras(29))
-  const [fim, setFim] = useState(dataLocal())
-  const [status, setStatus] = useState('')
-  const [incluirSemCompra, setIncluirSemCompra] = useState(false)
-  const [codigo, setCodigo] = useState('')
-  const [buscaCodigo, setBuscaCodigo] = useState('')
-  const [escopo, setEscopo] = useState('cliente')
-  const [pagina, setPagina] = useState(1)
+  const [fabrica, setFabrica] = useEstadoPagina(`relatorios.${tipo}.fabrica`, '')
+  const [vendedor, setVendedor] = useEstadoPagina(`relatorios.${tipo}.vendedor`, '')
+  const [rede, setRede] = useEstadoPagina(`relatorios.${tipo}.rede`, '')
+  const [inicio, setInicio] = useEstadoPagina(`relatorios.${tipo}.inicio`, tipo === 'reativacoes' ? '2026-09-29' : diasAtras(29))
+  const [fim, setFim] = useEstadoPagina(`relatorios.${tipo}.fim`, dataLocal())
+  const [status, setStatus] = useEstadoPagina(`relatorios.${tipo}.status`, '')
+  const [incluirSemCompra, setIncluirSemCompra] = useEstadoPagina(`relatorios.${tipo}.incluirSemCompra`, false)
+  const [codigo, setCodigo] = useEstadoPagina(`relatorios.${tipo}.codigo`, '')
+  const [buscaCodigo, setBuscaCodigo] = useEstadoPagina(`relatorios.${tipo}.buscaCodigo`, '')
+  const [escopo, setEscopo] = useEstadoPagina(`relatorios.${tipo}.escopo`, 'cliente')
+  const [pagina, setPagina] = useEstadoPagina(`relatorios.${tipo}.pagina`, 1)
   const [baixando, setBaixando] = useState(false)
   const [erro, setErro] = useState('')
   const redes = useDados('/relatorios/redes')
@@ -47,6 +48,7 @@ function RelatorioOperacional({ tipo, fabricas, vendedores }) {
   const valido = fim && fim <= dataLocal() && (posicao || inicio && inicio <= fim)
   const base = `/analises/relatorios/${tipo}`
   const resposta = useDados(valido ? `${base}?${parametros}&pagina=${pagina}` : null)
+  useRolagemPagina(`relatorio:${tipo}`, !!resposta.dados)
   function mudar(setter, valor) { setter(valor); setPagina(1); setErro('') }
   async function baixar() {
     setBaixando(true); setErro('')
@@ -75,10 +77,10 @@ function RelatorioOperacional({ tipo, fabricas, vendedores }) {
     </div>}
     {tipo === 'precos' && <form className="filtros-comerciais" onSubmit={(e) => { e.preventDefault(); mudar(setCodigo, buscaCodigo.trim()) }}><label>Código exato<input value={buscaCodigo} onChange={(e) => setBuscaCodigo(e.target.value)} placeholder="Todos os códigos" /></label><button className="botao-secundario" disabled={baixando}>Filtrar código</button></form>}
     {!valido && <p role="alert">Informe datas válidas, com data final até hoje.</p>}
-    <EstadoConsulta carregando={resposta.carregando || redes.carregando} erro={erro || resposta.erro || redes.erro} />
+    <EstadoConsulta carregando={resposta.carregando || redes.carregando} erro={erro || resposta.erro || redes.erro} aoTentar={() => { setErro(''); resposta.tentarNovamente(); redes.tentarNovamente() }} />
     {resposta.dados && <>
       <div className="filtros-comerciais"><p>{resposta.dados.total} registros encontrados.</p><button className="botao-secundario" disabled={baixando} onClick={baixar}>{baixando ? 'Gerando PDF…' : 'Baixar PDF completo'}</button></div>
-      <div className="rolagem-tabela"><table><thead><tr>{resposta.dados.colunas.map((c) => <th key={c.chave}>{c.titulo}</th>)}</tr></thead><tbody>{resposta.dados.linhas.map((r, i) => <tr key={i}>{resposta.dados.colunas.map((c) => <td key={c.chave}>{valorCelula(r[c.chave], c.formato)}</td>)}</tr>)}</tbody></table></div>
+      <div className="rolagem-tabela"><table><thead><tr>{resposta.dados.colunas.map((c) => <th key={c.chave}>{c.titulo}</th>)}</tr></thead><tbody>{resposta.dados.linhas.map((r, i) => <tr key={i}>{resposta.dados.colunas.map((c) => <td key={c.chave} className={['moeda', 'numero', 'percentual'].includes(c.formato) ? 'valor-numerico' : undefined}>{valorCelula(r[c.chave], c.formato)}</td>)}</tr>)}</tbody></table></div>
       {!resposta.dados.total && <p>Nenhum registro com os filtros selecionados.</p>}
       <Paginacao pagina={pagina} total={resposta.dados.total} tamanho={50} aoMudar={setPagina} unidade="registros" carregando={resposta.carregando} />
       {resposta.dados.notas.map((nota) => <p className="nota-painel" key={nota}>{nota}</p>)}
@@ -87,7 +89,7 @@ function RelatorioOperacional({ tipo, fabricas, vendedores }) {
 }
 
 export default function Relatorios({ fabricas = [], vendedores = [] }) {
-  const [tipo, setTipo] = useState('rede')
+  const [tipo, setTipo] = useEstadoPagina('relatorios.tipo', 'rede')
   return <main className="conteudo-painel" id="conteudo">
     <CabecalhoPagina titulo="Relatórios" descricao="Carteira, recuperação, preços e regiões a partir do histórico importado." />
     <div className="filtros-comerciais faixa-filtros"><label>Relatório<select aria-label="Relatório" value={tipo} onChange={(e) => setTipo(e.target.value)}>{Object.entries(tipos).map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}</select></label></div>

@@ -3,6 +3,15 @@ from sqlalchemy import case
 from src.backend.app.models import Cliente, Venda
 
 
+def normalizar_rede(nome):
+    return ' '.join((nome or '').split()).casefold()
+
+
+def chave_cliente(cliente_id, rede):
+    nome = normalizar_rede(rede)
+    return f'rede:{nome}' if nome else f'cliente:{cliente_id}'
+
+
 class IdentidadeCliente:
     def __init__(self, db):
         self.clientes = {c.id: c for c in db.query(Cliente.id, Cliente.razao_social,
@@ -10,8 +19,7 @@ class IdentidadeCliente:
         representantes = {}
         self.ids = {}
         for cid, c in sorted(self.clientes.items()):
-            rede = (c.grupo_economico or '').strip()
-            chave = ('rede', rede.casefold()) if rede else ('cliente', cid)
+            chave = chave_cliente(cid, c.grupo_economico)
             self.ids[cid] = representantes.setdefault(chave, cid)
 
     def id(self, fiscal_id):

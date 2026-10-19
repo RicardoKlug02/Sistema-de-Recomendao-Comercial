@@ -27,7 +27,7 @@ export default function Usuarios() {
         descricao="Gerencie as solicitações de acesso da sua equipe."
       />
       <Cartao titulo="Aprovação de acesso">
-        {(erro || dados.erro) && <p role="alert">{erro || dados.erro}</p>}
+        {(erro || dados.erro) && <div role="alert"><p>{erro || dados.erro}</p><button className="botao-secundario" onClick={() => { definirErro(''); dados.tentarNovamente() }}>Tentar novamente</button></div>}
         {dados.carregando ? (
           <p role="status">Carregando…</p>
         ) : (

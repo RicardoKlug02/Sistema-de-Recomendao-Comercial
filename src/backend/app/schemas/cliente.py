@@ -55,6 +55,8 @@ class FabricaResumoOut(BaseModel):
     status: str
     status_gatilho: str
     risco_bloqueio_neste_mes: bool
+    situacao_atividade: str
+    situacao_recompra: str
 
 
 class ReposicaoOut(BaseModel):
@@ -65,6 +67,8 @@ class ReposicaoOut(BaseModel):
     dias_desde_ultima: int
     status: str
     volume_habitual: float
+    fabrica_id: int
+    fabrica: str
 
 
 class AbandonoOut(BaseModel):
@@ -74,6 +78,8 @@ class AbandonoOut(BaseModel):
     dias_parado: int
     ciclo_habitual: int
     total_vezes_comprado: int
+    fabrica_id: int
+    fabrica: str
 
 
 class YoYOut(BaseModel):
@@ -84,10 +90,23 @@ class YoYOut(BaseModel):
     crescimento_pct: float
 
 
+class ProdutoSemConfirmacaoOut(BaseModel):
+    produto_id: int
+    sku: str
+    nome: str
+    ultima_compra_conhecida: date
+    pedido_sem_itens: date
+    mensagem: str
+    fabrica_id: int
+    fabrica: str
+
+
 class RecomendacaoProdutoOut(BaseModel):
     produto_id: int
     sku: str
     nome: str
+    fabrica_id: int
+    fabrica: str
     score: Optional[float] = None
     afinidade_percentual: Optional[float] = None
     classificacao: Optional[str] = None
@@ -112,6 +131,7 @@ class ClienteDetalhesOut(BaseModel):
     resumo_fabricas: List[FabricaResumoOut] = []
     sugestoes_reposicao: List[ReposicaoOut] = []
     produtos_em_abandono: List[AbandonoOut] = []
+    produtos_sem_confirmacao: List[ProdutoSemConfirmacaoOut] = Field(default_factory=list)
     performance_yoy: Optional[YoYOut] = None
     sugestoes_expansao_mix: List[RecomendacaoProdutoOut] = []
 
