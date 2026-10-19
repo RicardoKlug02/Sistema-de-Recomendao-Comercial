@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { solicitar } from './api'
+import { solicitar } from '../servicos/api'
 
 export default function useDados(endpoint, versao = 0) {
   const [resultado, definirResultado] = useState({ chave: null, dados: null, erro: '' })

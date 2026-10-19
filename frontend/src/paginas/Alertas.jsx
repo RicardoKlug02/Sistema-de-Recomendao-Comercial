@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useEstadoPagina, useRolagemPagina } from '../servicos/estadoPaginas'
 import AcompanhamentoAlerta from '../componentes/AcompanhamentoAlerta'
 import { situacoesAcompanhamento } from '../servicos/acompanhamento'
-import useDados from '../servicos/useDados'
-import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
-import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
-import Paginacao from '../componentes/comercial/Paginacao'
-import Icone from '../componentes/comercial/Icone'
-import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
+import useDados from '../hooks/useDados'
+import CabecalhoPagina from '../componentes/CabecalhoPagina'
+import EstadoConsulta from '../componentes/EstadoConsulta'
+import Paginacao from '../componentes/Paginacao'
+import Icone from '../componentes/Icone'
+import Seletor from '../componentes/Seletor'
 
 const tipos = {
   SEGUNDO_PEDIDO: 'Segundo pedido na base',
@@ -76,7 +76,7 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
             {resposta.dados.total} clientes · {resposta.dados.total_alertas ?? resposta.dados.total} alertas
           </span>
         )}
-        <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={(v) => { definirFabrica(v); definirPagina(1) }} />
+        <Seletor rotulo="Fábrica" todos="Todas as fábricas" opcoes={fabricas} valor={fabrica} aoMudar={(v) => { definirFabrica(v); definirPagina(1) }} />
       </div>
       <EstadoConsulta
         carregando={resposta.carregando}

@@ -1,5 +1,5 @@
 import Cartao from './Cartao'
-import { formatarMoeda } from '../servicos/dadosPainel'
+import { formatarMoeda } from '../servicos/formatacao'
 
 const numero = (v) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(v)
 const data = (v) => v.split('-').reverse().join('/')

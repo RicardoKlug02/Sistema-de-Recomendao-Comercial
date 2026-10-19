@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { solicitar } from '../servicos/api'
-import useDados from '../servicos/useDados'
-import { dataLocal, formatarData, formatarDataHora } from '../servicos/datas'
-import EstadoConsulta from './comercial/EstadoConsulta'
+import useDados from '../hooks/useDados'
+import { dataLocal, formatarData, formatarDataHora } from '../servicos/formatacao'
+import EstadoConsulta from './EstadoConsulta'
 import { situacoesAcompanhamento } from '../servicos/acompanhamento'
 
 export default function AcompanhamentoAlerta({ grupo, aoSalvar }) {

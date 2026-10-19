@@ -1,6 +1,5 @@
 import Icone from './Icone'
 
-// Estados explícitos evitam apresentar ausência de dados como resultado financeiro zero.
 export default function EstadoConsulta({
   carregando,
   erro,

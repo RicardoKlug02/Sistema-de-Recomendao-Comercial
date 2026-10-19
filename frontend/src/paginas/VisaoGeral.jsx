@@ -2,15 +2,15 @@ import { useEstadoPagina, useRolagemPagina } from '../servicos/estadoPaginas'
 import Cartao from '../componentes/Cartao'
 import HistoricoDisponivel from '../componentes/HistoricoDisponivel'
 import CartaoIndicador from '../componentes/CartaoIndicador'
-import CabecalhoPagina from '../componentes/comercial/CabecalhoPagina'
-import EstadoConsulta from '../componentes/comercial/EstadoConsulta'
-import Icone from '../componentes/comercial/Icone'
+import CabecalhoPagina from '../componentes/CabecalhoPagina'
+import EstadoConsulta from '../componentes/EstadoConsulta'
+import Icone from '../componentes/Icone'
 import GraficoMensal from '../componentes/graficos/GraficoMensal'
 import RankingBarras from '../componentes/graficos/RankingBarras'
-import useDados from '../servicos/useDados'
-import FiltroFabrica from '../componentes/comercial/FiltroFabrica'
-import { formatarMoeda } from '../servicos/dadosPainel'
-import { formatarData } from '../servicos/datas'
+import useDados from '../hooks/useDados'
+import Seletor from '../componentes/Seletor'
+import { formatarMoeda } from '../servicos/formatacao'
+import { formatarData } from '../servicos/formatacao'
 
 // Mantém os filtros e contratos da main; apresentação e gráficos são independentes da API.
 export default function VisaoGeral({
@@ -80,7 +80,7 @@ export default function VisaoGeral({
         >
           <Icone nome="atualizar" tamanho={16} /> Atualizar
         </button>
-        <FiltroFabrica fabricas={fabricas} valor={fabrica} aoMudar={definirFabrica} />
+        <Seletor rotulo="Fábrica" todos="Todas as fábricas" opcoes={fabricas} valor={fabrica} aoMudar={definirFabrica} />
       </div>
       <EstadoConsulta
         erro={consulta.erro || erroVendedores}

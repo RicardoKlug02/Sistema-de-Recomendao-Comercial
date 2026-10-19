@@ -1,11 +1,9 @@
-/* A tela de acesso repete a paleta do painel, com a marca original do projeto. */
 .pagina-autenticacao {
   min-height: 100svh;
   display: grid;
   place-items: center;
   padding: 40px 20px;
-  background:
-    radial-gradient(ellipse at 20% 20%, #e6eddf 0, transparent 55%), #f5f7f2;
+  background: radial-gradient(ellipse at 20% 20%, #e6eddf 0, transparent 55%), #f5f7f2;
 }
 .cartao-autenticacao {
   width: 460px;
@@ -105,10 +103,6 @@
   color: #a44d37;
   font-size: 12px;
   line-height: 1.6;
-}
-.mensagem-retorno {
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 @media (max-width: 500px) {
   .cartao-autenticacao {
