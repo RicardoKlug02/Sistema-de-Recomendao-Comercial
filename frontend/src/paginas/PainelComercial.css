@@ -60,17 +60,6 @@
   background: var(--verde-suave);
   font-weight: 600;
 }
-.ponto-menu {
-  display: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #6d967a;
-  margin-left: auto;
-}
-[aria-current] .ponto-menu {
-  display: block;
-}
 .nota-menu {
   margin: auto 10px 12px;
   padding-top: 48px;
@@ -785,9 +774,6 @@
     padding: 10px 13px;
     font-size: 12px;
     min-height: 44px;
-  }
-  .ponto-menu {
-    display: none !important;
   }
   .barra-superior {
     margin: 0;

@@ -23,7 +23,7 @@ export default function MenuLateral({ usuario, secaoAtiva, aoNavegar, aoSair }) 
       >
         <Marca />
       </a>
-      <p className="legenda-menu">ESPAÇO COMERCIAL</p>
+      <p className="legenda-menu">MENU</p>
       <nav aria-label="Menu principal">
         {secoes
           .filter((s) => gestor || !s.restrita)
@@ -39,19 +39,9 @@ export default function MenuLateral({ usuario, secaoAtiva, aoNavegar, aoSair }) 
             >
               <Icone nome={id} tamanho={19} />
               {titulo}
-              <span className="ponto-menu" />
             </a>
           ))}
       </nav>
-      <div className="nota-menu">
-        <Icone nome="oportunidade" />
-        <strong>
-          Boas vendas começam
-          <br />
-          com boas informações.
-        </strong>
-        <p>Sua carteira, mais próxima.</p>
-      </div>
       <div className="rodape-menu">
         <div className="perfil">
           <span className="avatar" aria-hidden="true">
