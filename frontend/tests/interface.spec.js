@@ -62,6 +62,8 @@ async function preparar(page, perfil = 'admin') {
       body = [{ id: 1, nome: 'Vendedor Exemplo' }]
     else if (caminho === '/comercial/fabricas')
       body = [{ id: 1, nome: 'Fábrica Exemplo' }]
+    else if (caminho === '/comercial/historico-disponivel')
+      body = { inicio: '2025-01-01', fim: '2026-10-18', pedidos: 80, ultima_importacao: null }
     else if (caminho === '/relatorios/redes')
       body = [{ nome: 'Rede Exemplo', clientes: 2 }]
     else if (caminho === '/relatorios/produtos-rede')
@@ -145,7 +147,7 @@ test('painel responsivo, filtros reais e sessão após recarregar', async ({
   ).toBeVisible()
   expect(
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     ),
   ).toBeTruthy()
   await page.screenshot({
@@ -235,7 +237,9 @@ test('importação exige conferência e confirmação antes de gravar', async ({
     page.getByRole('button', { name: 'Confirmar importação' }),
   ).toBeDisabled()
   expect(gravacoes).toBe(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy()
   await page.getByRole('checkbox').check()
+  await expect(page.getByRole('checkbox')).toBeChecked()
   await page.getByRole('button', { name: 'Confirmar importação' }).click()
   await expect(page.getByRole('region', { name: 'Importar planilhas', exact: true }).getByRole('status')).toContainText(
     '1 pedidos: 1 novos e 0 atualizados; 1 itens importados.',
@@ -275,4 +279,83 @@ test('relatório da rede filtra fábrica e baixa PDF autenticado', async ({ page
   const pdf = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Baixar PDF', exact: true }).click()
   expect((await pdf).suggestedFilename()).toBe('produtos-da-rede.pdf')
+})
+
+test('alertas preservam fábrica e vendedor ao voltar e registram acompanhamento', async ({ page }) => {
+  await preparar(page)
+  let versao = 0
+  let motivo = ''
+  let situacao = 'PENDENTE'
+  const assinatura = 'a'.repeat(64)
+  await page.route('**/api/v1/comercial/alertas?*', (route) => route.fulfill({ json: {
+    total: 1, total_alertas: 1, itens: [{ id: 'cliente:1', cliente_id: 1, cliente: cliente.razao_social,
+      prioridade: 1, assinatura, resumo: { FABRICA_INATIVA: 1 },
+      alertas: [{ id: 'f1', tipo: 'FABRICA_INATIVA', descricao: 'Fábrica Exemplo: inativa.' }],
+      acompanhamento: { versao, situacao, motivo, proximo_contato: null, atualizado_em: '2026-10-18T12:00:00Z', usuario: versao ? usuario.nome : null },
+    }],
+  } }))
+  await page.route('**/api/v1/comercial/alertas/1/acompanhamento', async (route) => {
+    const entrada = route.request().postDataJSON()
+    expect(entrada.assinatura).toBe(assinatura)
+    expect(entrada.versao).toBe(versao)
+    versao++; motivo = entrada.motivo; situacao = entrada.situacao
+    return route.fulfill({ json: { versao, situacao } })
+  })
+  await page.route('**/api/v1/comercial/alertas/1/historico', (route) => route.fulfill({ json: [
+    { versao, situacao, motivo, usuario: usuario.nome, atualizado_em: '2026-10-18T12:00:00Z', proximo_contato: null },
+  ] }))
+  await entrar(page)
+  await page.getByRole('link', { name: 'Alertas', exact: true }).click()
+  await page.getByLabel('Vendedor', { exact: true }).selectOption('1')
+  await page.getByLabel('Fábrica', { exact: true }).selectOption('1')
+  await expect(page.getByText('1 × Fábrica inativa', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Consultar cliente' }).click()
+  await expect(page.getByRole('heading', { name: cliente.razao_social, exact: true })).toBeVisible()
+  await expect(page.getByLabel('Fábrica', { exact: true })).toHaveValue('1')
+  await page.getByRole('button', { name: 'Voltar aos alertas' }).click()
+  await expect(page.getByLabel('Vendedor', { exact: true })).toHaveValue('1')
+  await expect(page.getByLabel('Fábrica', { exact: true })).toHaveValue('1')
+  await page.getByText('Registrar acompanhamento', { exact: true }).click()
+  await page.getByLabel('Situação do acompanhamento').selectOption('CONTATADO')
+  await page.getByLabel('Motivo ou observação').fill('Contato de demonstração')
+  await page.getByRole('button', { name: 'Salvar acompanhamento' }).click()
+  await expect(page.getByText('Acompanhamento: Contatado', { exact: true })).toBeVisible()
+  await page.getByText('Histórico de acompanhamento', { exact: true }).click()
+  await expect(page.locator('ol').getByText('Contato de demonstração', { exact: true })).toBeVisible()
+})
+
+test('consulta com erro pode ser tentada novamente sem recarregar', async ({ page }) => {
+  await preparar(page)
+  let falhar = true
+  await page.route('**/api/v1/comercial/clientes?*', (route) => falhar
+    ? route.fulfill({ status: 503, json: { detail: 'Falha temporária de demonstração.' } })
+    : route.fulfill({ json: { total: 1, itens: [cliente] } }))
+  await entrar(page)
+  await page.getByRole('link', { name: 'Clientes', exact: true }).click()
+  await expect(page.getByText('Falha temporária de demonstração.', { exact: true })).toBeVisible()
+  falhar = false
+  await page.getByRole('button', { name: 'Tentar novamente', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Abrir ficha', exact: true })).toBeVisible()
+})
+
+test('ficha distingue fábricas com mesmo código e separa ciclo de inatividade', async ({ page }) => {
+  await preparar(page)
+  await page.route('**/api/v1/clientes/1?*', (route) => route.fulfill({ json: {
+    ...cliente, cliente_id: 1, clientes_agrupados: 1, cadastros_fiscais: [], valor_comprado: 100,
+    pedidos_emitidos: 3, ritmo_compras: null, comparacao_produtos: [], produtos_em_abandono: [],
+    produtos_sem_confirmacao: [], sugestoes_expansao_mix: [], sugestoes_fabricas: [],
+    resumo_fabricas: [{ fabrica_id: 1, fabrica: 'Fábrica Exemplo', ultima_compra: '01/10/2026',
+      data_limite_inatividade: '30/12/2026', situacao_atividade: 'Ativa', situacao_recompra: 'Recompra atrasada há 7 dias' }],
+    sugestoes_reposicao: [
+      { produto_id: 1, fabrica: 'Fábrica Exemplo', sku: '21053', nome: 'Produto A', status: 'Janela Ideal', volume_habitual: 10 },
+      { produto_id: 2, fabrica: 'Outra fábrica', sku: '21053', nome: 'Produto B', status: 'Janela Ideal', volume_habitual: 5 },
+    ],
+  } }))
+  await entrar(page)
+  await page.getByRole('link', { name: 'Clientes', exact: true }).click()
+  await page.getByRole('button', { name: 'Abrir ficha', exact: true }).click()
+  await expect(page.getByText('Fábrica Exemplo · Código 21053', { exact: true })).toBeVisible()
+  await expect(page.getByText('Outra fábrica · Código 21053', { exact: true })).toBeVisible()
+  await expect(page.getByText('Ativa', { exact: true })).toBeVisible()
+  await expect(page.getByText('Recompra atrasada há 7 dias', { exact: true })).toBeVisible()
 })

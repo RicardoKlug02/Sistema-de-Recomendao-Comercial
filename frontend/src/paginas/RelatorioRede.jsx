@@ -1,3 +1,4 @@
+import { useEstadoPagina } from '../servicos/estadoPaginas'
 import { useState } from 'react'
 
 import EstadoConsulta from '../componentes/EstadoConsulta'
@@ -8,8 +9,8 @@ import { solicitar } from '../servicos/api'
 import { formatarMoeda } from '../servicos/formatacao'
 
 export default function RelatorioRede({ fabricas }) {
-  const [rede, definirRede] = useState('')
-  const [fabrica, definirFabrica] = useState('')
+  const [rede, definirRede] = useEstadoPagina('relatorioRede.rede', '')
+  const [fabrica, definirFabrica] = useEstadoPagina('relatorioRede.fabrica', '')
   const [baixando, definirBaixando] = useState(false)
   const [erro, definirErro] = useState('')
   const redes = useDados('/relatorios/redes')
@@ -40,12 +41,12 @@ export default function RelatorioRede({ fabricas }) {
         <Seletor rotulo="Fábrica" todos="Todas as fábricas" opcoes={fabricas} valor={fabrica} aoMudar={definirFabrica} disabled={baixando} />
         <button className="botao-principal" disabled={!rede || consulta.carregando || !consulta.dados || baixando} onClick={baixar}>{baixando ? 'Gerando PDF…' : 'Baixar PDF'}</button>
       </div>
-      <EstadoConsulta carregando={redes.carregando || consulta.carregando} erro={erro || redes.erro || consulta.erro} />
+      <EstadoConsulta carregando={redes.carregando || consulta.carregando} erro={erro || redes.erro || consulta.erro} aoTentar={() => { definirErro(''); redes.tentarNovamente(); consulta.tentarNovamente() }} />
       {!redes.carregando && redes.dados?.length === 0 && <p>Não há redes cadastradas. Preencha a coluna Rede de clientes na importação.</p>}
       {consulta.dados && <>
         <p>{consulta.dados.clientes} cadastros fiscais · {consulta.dados.total} {consulta.dados.total === 1 ? 'código encontrado' : 'códigos encontrados'}.</p>
         <div className="rolagem-tabela"><table><thead><tr><th>Código</th><th>Produto</th><th>Fábrica</th><th>Último pedido</th><th>Último preço unitário</th><th>Pedido</th><th>Cliente da compra</th></tr></thead>
-          <tbody>{consulta.dados.produtos.map((p) => <tr key={p.produto_id}><td>{p.sku}</td><td>{p.nome}</td><td>{p.fabrica}</td><td>{p.ultima_compra.split('-').reverse().join('/')}</td><td>{formatarMoeda(p.ultimo_preco)}</td><td>{p.pedido}</td><td>{p.cliente}</td></tr>)}</tbody></table></div>
+          <tbody>{consulta.dados.produtos.map((p) => <tr key={p.produto_id}><td>{p.sku}</td><td>{p.nome}</td><td>{p.fabrica}</td><td>{p.ultima_compra.split('-').reverse().join('/')}</td><td className="valor-numerico">{formatarMoeda(p.ultimo_preco)}</td><td>{p.pedido}</td><td>{p.cliente}</td></tr>)}</tbody></table></div>
         {!consulta.dados.total && <p>Nenhum produto comprado com os filtros selecionados.</p>}
         <p className="nota-painel">{consulta.dados.pedidos_sem_itens} pedidos sem itens. Códigos e preços desses pedidos não estão disponíveis. O último preço pertence à última compra encontrada na rede, no histórico importado.</p>
       </>}

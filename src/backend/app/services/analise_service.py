@@ -4,8 +4,9 @@ from types import SimpleNamespace
 from datetime import date, timedelta
 from src.backend.app.services.datas import hoje_comercial
 from sqlalchemy import func
-from src.backend.app.services.identidade_cliente import IdentidadeCliente
+from src.backend.app.services.identidade_cliente import IdentidadeCliente, normalizar_rede
 from src.backend.app.services.regras_service import MotorRegras
+from src.backend.app.services.evidencia_produtos import recompra_nao_confirmada
 from src.backend.app.models import Cliente, Fabrica, Venda, Produto, ItemVenda, Vendedor
 
 
@@ -22,7 +23,7 @@ class AnaliseService:
         self.identidade = IdentidadeCliente(db)
         self.regras = MotorRegras(db,self.identidade)
         self.rede_ids = [cid for cid,c in self.identidade.clientes.items()
-                         if (c.grupo_economico or '').strip().casefold() == (rede or '').strip().casefold()]
+                         if normalizar_rede(c.grupo_economico) == normalizar_rede(rede)]
         q = db.query(Venda.id, Venda.cliente_id, Venda.fabrica_id, Venda.vendedor_id, Venda.data_venda, Venda.valor_total, Venda.numero_pedido).filter(Venda.data_venda <= fim)
         if rede:
             q = q.filter(Venda.cliente_id.in_(self.rede_ids))
@@ -109,14 +110,14 @@ class AnaliseService:
                 desconhecidos[(v.cliente_id,v.fabrica_id)] = v.data_venda
         conhecidos = self.produtos_posicao(referencia)
         pool_original = produtos if produtos is not None else {p for p in conhecidos if p[0] in carteira}
-        pool = {(cid,self.regras.produto(pid,cid,referencia)) for cid,pid in pool_original
+        pool = {(cid,self.regras.produto(pid,cid,referencia,date.min)) for cid,pid in pool_original
                 if not self.regras.bloqueada(cid,self.regras.produtos[pid].fabrica_id,referencia)}
         itens_inativos = itens_incerto = 0
         for chave in pool:
             r = conhecidos.get(chave)
             if not r:
                 continue
-            if desconhecidos.get((chave[0],r['fabrica_id']), date.min) > r['ultima']:
+            if recompra_nao_confirmada(r['ultima'], desconhecidos.get((chave[0],r['fabrica_id']))):
                 itens_incerto += 1
                 continue
             dias = (referencia-r['ultima']).days
@@ -177,7 +178,8 @@ class AnaliseService:
     @staticmethod
     def tabela(titulo,colunas,linhas,notas):
         return {'titulo':titulo,'colunas':[{'chave':c[0],'titulo':c[1],'formato':c[2] if len(c)>2 else 'texto'} for c in colunas],
-                'linhas':linhas,'notas':['Cada rede é um cliente comercial; CNPJs sem rede são individuais. Compras de todos os CNPJs da rede compõem seu histórico.'] + notas}
+                'linhas':linhas,'notas':['Cada rede é um cliente comercial; CNPJs sem rede são individuais. Compras de todos os CNPJs da rede compõem seu histórico.',
+                'Primeira compra significa primeira compra registrada na base. Importações de históricos anteriores podem alterar datas e classificações.'] + notas}
 
     def mapa(self,incluir_sem_compra=False):
         ultimo_global = {v.cliente_id:v for v in self.vendas}
@@ -236,7 +238,7 @@ class AnaliseService:
             ('novos_pedidos','Qtde. após retorno','numero'),
             ('valor_apos_retorno','Valor após retorno (R$)','moeda'),('situacao','Continuidade')],linhas,
             [('Reativação de cliente no escritório.' if escopo=='cliente' else 'Reativação da relação cliente x fábrica.'),
-             'Mostra clientes que voltaram a comprar no período após pelo menos 90 dias sem compra. A primeira compra de um cliente não é reativação.',
+             'Mostra clientes que voltaram a comprar no período após pelo menos 90 dias sem compra. A primeira compra registrada na base não é contada como reativação.',
              'Nº pedido de retorno identifica o primeiro pedido depois da pausa. Valor do retorno é o valor desse pedido. Qtde. após retorno conta somente os pedidos seguintes; Valor após retorno soma somente esses pedidos, sem incluir a compra de retorno.',
              'Exemplo: o cliente retorna com R$ 100 e faz mais dois pedidos de R$ 150 cada. Qtde. após retorno: 2; Valor após retorno: R$ 300. Sem pedidos seguintes, ambas as colunas ficam em zero.',
              'Acompanhamento até a data final ou a próxima reativação, sem duplicar episódios. Sem novo pedido não significa insucesso: considere há quanto tempo o cliente retornou.',

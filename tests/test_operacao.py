@@ -82,6 +82,20 @@ def test_data_invalida_nao_vira_compra_recente(db_session):
     assert db_session.query(Venda).count() == 0
 
 
+def test_data_futura_bloqueia_conferencia_e_gravacao_de_toda_carga(db_session,monkeypatch):
+    monkeypatch.setattr('src.backend.app.services.excel_service.hoje_comercial',lambda:date(2026,8,15))
+    cab=cabecalhos()
+    cab.loc[1,'data']='16/08/2026'
+    service=ExcelService(db_session)
+    for acao in (service.conferir,service._validar_e_salvar):
+        with pytest.raises(ValueError,match='Pedido 2.*posterior a hoje'):
+            acao(cab,itens())
+    assert db_session.query(Venda).count()==0
+    assert db_session.query(Cliente).count()==0
+    cab.loc[1,'data']='15/08/2026'
+    assert service._validar_e_salvar(cab,itens())['processados']==2
+
+
 def test_itens_orfaos_sao_contabilizados_em_aviso(db_session):
     prod = pd.concat([itens(), itens().assign(pedido="999")])
     result = ExcelService(db_session)._validar_e_salvar(cabecalhos(), prod)

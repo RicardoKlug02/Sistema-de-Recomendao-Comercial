@@ -29,7 +29,7 @@ export default function Usuarios() {
     <main className="conteudo-painel">
       <CabecalhoPagina titulo="Usuários" descricao="Gerencie as solicitações de acesso da sua equipe." />
       <Cartao titulo="Aprovação de acesso">
-        <EstadoConsulta carregando={usuarios.carregando} erro={erro || usuarios.erro} />
+        <EstadoConsulta carregando={usuarios.carregando} erro={erro || usuarios.erro} aoTentar={() => { definirErro(''); usuarios.tentarNovamente() }} />
         {usuarios.dados && (
           <Tabela colunas={['Nome', 'E-mail', 'Situação', 'Ação']}>
             {usuarios.dados.map((u) => (

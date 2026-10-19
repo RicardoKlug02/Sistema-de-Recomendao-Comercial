@@ -10,3 +10,4 @@ from .cliente_analises import AlertaComercial, ClienteAnalytics, FabricaAnalytic
 from .importacao import Importacao
 
 from .regra_negocio import RegraNegocio
+from .acao_alerta import AcaoAlerta

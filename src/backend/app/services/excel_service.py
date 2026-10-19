@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 import pandas as pd
 from sqlalchemy.orm import Session
 from src.backend.app.core.security import gerar_blind_index
+from src.backend.app.services.datas import hoje_comercial
 from src.backend.app.models import Cliente, Fabrica, ItemVenda, Produto, Venda, Vendedor
 
 
@@ -166,6 +167,7 @@ class ExcelService:
         chaves = set()
         pedidos_fabricas = {}
         cabecalhos = []
+        hoje = hoje_comercial()
         for linha, row in df_cab.iterrows():
             pedido = identificador(row["pedido"])
             if "tipo_pedido" in row and normalizar_coluna(row["tipo_pedido"]) not in {"venda", "pedido_de_venda"}:
@@ -190,6 +192,10 @@ class ExcelService:
                 data = data.date()
             except (ValueError, TypeError):
                 raise ValueError(f"Pedido {pedido}: data inválida.")
+            if data > hoje:
+                raise ValueError(f"Pedido {pedido}, fábrica {fabrica}, linha {linha + 1}: data de emissão "
+                                 f"{data:%d/%m/%Y} posterior a hoje ({hoje:%d/%m/%Y}). "
+                                 "Corrija a planilha e confira novamente. Nenhum pedido desta carga foi importado.")
             valor = self._converter_valor_br(row.get("valor_total"))
             if valor < 0:
                 raise ValueError(f"Pedido {pedido}: valor total negativo.")

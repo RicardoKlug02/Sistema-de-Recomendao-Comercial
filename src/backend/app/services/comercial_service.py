@@ -1,12 +1,14 @@
 from src.backend.app.services.datas import hoje_comercial
 """Indicadores e alertas calculados a partir das vendas, incluindo pedidos sem itens."""
 from collections import defaultdict
+import hashlib
 from types import SimpleNamespace
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 from src.backend.app.services.identidade_cliente import IdentidadeCliente
 from src.backend.app.services.regras_service import MotorRegras
+from src.backend.app.services.evidencia_produtos import recompra_nao_confirmada
 from src.backend.app.models import Cliente, Fabrica, Venda, Vendedor, Produto, ItemVenda
 
 
@@ -57,13 +59,14 @@ class ComercialService:
             regioes[(c.micro_regiao or "Região não identificada", c.estado or "UF não informada")] += v.valor_total
         produtos = []
         if vendas:
-            linhas = (self.db.query(Produto.id, Produto.nome, Produto.sku, func.sum(ItemVenda.quantidade).label("qtd"),
+            linhas = (self.db.query(Produto.id, Produto.nome, Produto.sku, Produto.fabrica_id, func.sum(ItemVenda.quantidade).label("qtd"),
                                    func.sum(ItemVenda.quantidade * ItemVenda.preco_unitario).label("valor"))
                       .join(ItemVenda, ItemVenda.produto_id == Produto.id)
                       .filter(ItemVenda.venda_id.in_([v.id for v in vendas]))
-                      .group_by(Produto.id, Produto.nome, Produto.sku)
+                      .group_by(Produto.id, Produto.nome, Produto.sku, Produto.fabrica_id)
                       .order_by(func.sum(ItemVenda.quantidade * ItemVenda.preco_unitario).desc()).limit(10).all())
             produtos = [{"id": r.id, "nome": r.nome, "sku": r.sku, "quantidade": int(r.qtd),
+                         "fabrica_id": r.fabrica_id, "fabrica": fabricas[r.fabrica_id].nome_fantasia,
                          "valor": round(float(r.valor), 2)} for r in linhas]
         meses = [(inicio - relativedelta(months=i)).strftime("%Y-%m") for i in range(11, -1, -1)]
         return {"mes": mes, "indicadores": {
@@ -106,26 +109,29 @@ class ComercialService:
             cid = self.identidade.id(r.cliente_id)
             if regras.bloqueada(cid,r.fabrica_id,ref):
                 continue
-            pid = regras.produto(r.produto_id,cid,ref)
+            pid = regras.produto(r.produto_id,cid,ref,r.data_venda)
             p = regras.produtos[pid] if pid != r.produto_id else r
             meta = SimpleNamespace(**{**r._mapping,'produto_id':pid,'sku':p.sku,'nome':p.nome})
             por_produto[(cid,pid)][r.data_venda] = meta
         resultado = []
+        sem_itens = {}
+        ids_sem_itens = {r[0] for r in self.db.query(Venda.id).filter(Venda.data_venda <= ref, ~Venda.itens.any())}
+        for v in vendas:
+            if v.id in ids_sem_itens:
+                sem_itens[(v.cliente_id,v.fabrica_id)] = v.data_venda
         filtro_fabrica = fabrica_id
         def adicionar(tipo, cliente_id, descricao, dias, prioridade, venda, fabrica_id=None, produto_id=None):
-            if vendedor_id is not None and venda.vendedor_id != vendedor_id:
-                return
-            if filtro_fabrica is not None and (fabrica_id != filtro_fabrica if fabrica_id is not None else cliente_id not in atendidos_fabrica):
-                return
             resultado.append({"id": f"{tipo}:{cliente_id}:{fabrica_id or 0}:{produto_id or 0}", "tipo": tipo,
                               "cliente_id": cliente_id, "cliente": self.identidade.nome(cliente_id),
                               "descricao": descricao, "dias": dias, "prioridade": prioridade,
-                              "fabrica_id": fabrica_id, "produto_id": produto_id})
+                              "fabrica_id": fabrica_id, "produto_id": produto_id,
+                              "vendedor_id": regras.vendedor(cliente_id,fabrica_id,ref),
+                              "referencia": venda.data_venda.isoformat()})
         for cid, historico in por_cliente.items():
             ultima = historico[-1]
             dias = (ref - ultima.data_venda).days
             if len(historico) == 1 and dias >= 14:
-                adicionar("SEGUNDO_PEDIDO", cid, "Contatar cliente para o segundo pedido.", dias, 2, ultima)
+                adicionar("SEGUNDO_PEDIDO", cid, "Contatar cliente após a primeira compra registrada na base. Confira o histórico disponível.", dias, 2, ultima)
             if dias >= 90:
                 adicionar("CLIENTE_INATIVO", cid, "Cliente sem pedidos há pelo menos 90 dias.", dias, 1, ultima)
         for (cid, fid), historico in por_fabrica.items():
@@ -137,6 +143,8 @@ class ComercialService:
                           dias, 1 if dias >= 90 else 2, ultima, fabrica_id=fid)
         for (cid, pid), compras in por_produto.items():
             datas = sorted(compras)
+            if recompra_nao_confirmada(datas[-1],sem_itens.get((cid,compras[datas[-1]].fabrica_id))):
+                continue
             if len(datas) < 2:
                 continue
             ciclo = max(1, sum((b - a).days for a, b in zip(datas, datas[1:])) / (len(datas) - 1))
@@ -145,4 +153,12 @@ class ComercialService:
                 meta = compras[datas[-1]]
                 adicionar("PRODUTO_EM_RISCO", cid, f"{fabricas[meta.fabrica_id].nome_fantasia} · Código {meta.sku} · {meta.nome}: {dias} dias sem comprar (ciclo médio {ciclo:.0f} dias).",
                           dias, 1 if dias >= ciclo * 2.5 else 2, meta, produto_id=pid, fabrica_id=meta.fabrica_id)
+        assinaturas = defaultdict(list)
+        for a in resultado:
+            assinaturas[a['cliente_id']].append(f"{a['id']}:{a['referencia']}:{a['prioridade']}")
+        assinaturas = {cid:hashlib.sha256('|'.join(sorted(sinais)).encode()).hexdigest() for cid,sinais in assinaturas.items()}
+        for a in resultado:
+            a['assinatura'] = assinaturas[a['cliente_id']]
+        resultado = [a for a in resultado if (vendedor_id is None or a['vendedor_id']==vendedor_id)
+                     and (filtro_fabrica is None or (a['fabrica_id']==filtro_fabrica if a['fabrica_id'] is not None else a['cliente_id'] in atendidos_fabrica))]
         return sorted(resultado, key=lambda a: (a["prioridade"], -a["dias"], a["cliente_id"]))

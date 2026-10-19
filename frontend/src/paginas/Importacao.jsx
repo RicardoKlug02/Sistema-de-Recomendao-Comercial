@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import CabecalhoPagina from '../componentes/CabecalhoPagina'
 import Cartao from '../componentes/Cartao'
 import EstadoConsulta from '../componentes/EstadoConsulta'
@@ -6,9 +6,10 @@ import Tabela from '../componentes/Tabela'
 import useDados from '../hooks/useDados'
 import { formatarMoeda } from '../servicos/formatacao'
 import { importarArquivos } from '../servicos/importacao'
-import './Importacao.css'
+
 
 export default function Importacao({ aoImportar }) {
+  const confirmacaoId = useId()
   const [cabecalho, definirCabecalho] = useState(null)
   const [itens, definirItens] = useState(null)
   const [erro, definirErro] = useState('')
@@ -111,15 +112,16 @@ export default function Importacao({ aoImportar }) {
               {conferencia.processados > 100 && (
                 <p>A tabela mostra os primeiros 100 pedidos. Os totais incluem todos os pedidos.</p>
               )}
-              <label className="confirmacao-carga">
+              <div className="confirmacao-carga">
                 <input
+                  id={confirmacaoId}
                   type="checkbox"
                   checked={confirmado}
                   disabled={enviando}
                   onChange={(e) => definirConfirmado(e.target.checked)}
                 />
-                Confirmo que as planilhas contêm somente vendas efetivadas que geram comissão.
-              </label>
+                <label htmlFor={confirmacaoId}>Confirmo que as planilhas contêm somente vendas efetivadas que geram comissão.</label>
+              </div>
             </section>
           )}
           <button
@@ -150,6 +152,7 @@ export default function Importacao({ aoImportar }) {
         <EstadoConsulta
           carregando={historico.carregando}
           erro={historico.erro}
+          aoTentar={historico.tentarNovamente}
           vazio={historico.dados?.length === 0}
           mensagem="Nenhuma importação realizada."
         />
