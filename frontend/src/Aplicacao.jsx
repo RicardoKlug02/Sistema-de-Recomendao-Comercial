@@ -4,7 +4,6 @@ import FormularioAutenticacao from './componentes/FormularioAutenticacao'
 import PainelComercial from './paginas/PainelComercial'
 import { tituloDocumento } from './secoes'
 import { obterSessao, salvarSessao, solicitar } from './servicos/api'
-import './Autenticacao.css'
 
 const telas = {
   entrar: {

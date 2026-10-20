@@ -1,0 +1,58 @@
+/* Telas de login, cadastro e recuperação de senha. */
+.pagina-autenticacao {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+  background: radial-gradient(ellipse at 20% 20%, #e6eddf 0, transparent 55%), #f5f7f2;
+}
+.cartao-autenticacao {
+  width: 460px;
+  max-width: 100%;
+  padding: 40px;
+  background: #fff;
+  border: 1px solid #e1e7db;
+  border-radius: 20px;
+  box-shadow: 0 16px 60px #33482a08;
+}
+.cabecalho-autenticacao {
+  margin-bottom: 30px;
+}
+.cabecalho-autenticacao .logo-rio-verde {
+  width: 180px;
+  margin: 0 auto 38px;
+}
+.cabecalho-autenticacao h1 {
+  margin: 0 0 12px;
+  font-size: 29px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: -0.8px;
+  color: #2d4535;
+}
+.cabecalho-autenticacao p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #75816d;
+}
+.formulario-autenticacao {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.formulario-autenticacao small {
+  font-size: 10px;
+  color: #7b8576;
+  line-height: 1.7;
+}
+@media (max-width: 500px) {
+  .cartao-autenticacao {
+    padding: 30px 24px;
+  }
+  .cabecalho-autenticacao h1 {
+    font-size: 26px;
+  }
+}

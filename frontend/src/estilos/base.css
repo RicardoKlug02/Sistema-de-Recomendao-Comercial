@@ -1,3 +1,4 @@
+/* Padrões do navegador: fonte, caixa, botões e campos. */
 :root {
   font-family:
     'Segoe UI Variable',
@@ -36,7 +37,7 @@ button:disabled {
 }
 button:focus-visible,
 input:focus-visible {
-  outline: 2px solid #648c50;
+  outline: 2px solid var(--foco);
   outline-offset: 3px;
 }
 input[type='checkbox'] {
