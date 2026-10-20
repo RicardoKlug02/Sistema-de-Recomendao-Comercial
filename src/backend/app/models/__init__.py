@@ -6,4 +6,8 @@ from .produto import Produto
 from .venda import Venda
 from .item_venda import ItemVenda
 from .usuario import Usuario
+from .cliente_analises import AlertaComercial, ClienteAnalytics, FabricaAnalytics, ResumoVendasGeral
 from .importacao import Importacao
+
+from .regra_negocio import RegraNegocio
+from .acao_alerta import AcaoAlerta

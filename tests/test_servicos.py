@@ -1,3 +1,4 @@
+import pytest
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from src.backend.app.models.cliente import Cliente
@@ -13,14 +14,12 @@ from src.backend.app.core.security import gerar_blind_index
 
 def test_excel_service_normalizacao_e_conversoes(db_session):
     service = ExcelService(db_session=db_session)
-    assert service.normalizar_sku("1024U") == "1024U"
-    assert service.normalizar_sku("1024u") == "1024u"
+    assert service.normalizar_sku("1024U") == "1024"
+    assert service.normalizar_sku("1024u") == "1024"
     assert service.normalizar_sku("SKU-99") == "SKU-99"
     assert service._converter_valor_br("R$ 1.250,50") == 1250.50
     assert service._converter_valor_br("450,00") == 450.00
-    import pytest
-
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="obrigatório"):
         service._converter_valor_br(None)
 
 
@@ -59,16 +58,18 @@ def test_busca_hibrida_cliente_service(db_session):
 
 def test_dossie_e_alertas_de_churn_recompra(db_session):
     hoje = date(2026, 9, 14)
-
+    
     fabrica = Fabrica(nome_fantasia="Argaplan Indústria")
     cliente = Cliente(
-        razao_social="Cliente Teste Alerta", cnpj_cpf="CLI_0001", cnpj_hash="hash_0001"
+        razao_social="Cliente Teste Alerta",
+        cnpj_cpf="CLI_0001",
+        cnpj_hash="hash_0001"
     )
     # Cliente secundário para definir a régua da média do banco
     cliente_padrao = Cliente(
         razao_social="Cliente Varejo Baixo Volume",
         cnpj_cpf="CLI_0002",
-        cnpj_hash="hash_0002",
+        cnpj_hash="hash_0002"
     )
     db_session.add_all([fabrica, cliente, cliente_padrao])
     db_session.flush()
@@ -87,14 +88,7 @@ def test_dossie_e_alertas_de_churn_recompra(db_session):
     )
     db_session.add(venda_base)
     db_session.flush()
-    db_session.add(
-        ItemVenda(
-            venda_id=venda_base.id,
-            produto_id=produto.id,
-            quantidade=5,
-            preco_unitario=40.0,
-        )
-    )
+    db_session.add(ItemVenda(venda_id=venda_base.id, produto_id=produto.id, quantidade=5, preco_unitario=40.0))
 
     # Vendas do Cliente de Alto Volume (volume 100 > corte de 1.2x da média)
     venda_1 = Venda(
@@ -114,12 +108,8 @@ def test_dossie_e_alertas_de_churn_recompra(db_session):
     db_session.add_all([venda_1, venda_2])
     db_session.flush()
 
-    item_1 = ItemVenda(
-        venda_id=venda_1.id, produto_id=produto.id, quantidade=100, preco_unitario=100.0
-    )
-    item_2 = ItemVenda(
-        venda_id=venda_2.id, produto_id=produto.id, quantidade=100, preco_unitario=90.0
-    )
+    item_1 = ItemVenda(venda_id=venda_1.id, produto_id=produto.id, quantidade=100, preco_unitario=100.0)
+    item_2 = ItemVenda(venda_id=venda_2.id, produto_id=produto.id, quantidade=100, preco_unitario=90.0)
     db_session.add_all([item_1, item_2])
     db_session.commit()
 

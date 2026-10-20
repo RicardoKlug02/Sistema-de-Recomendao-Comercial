@@ -1,13 +1,18 @@
 from collections import defaultdict
+from types import SimpleNamespace
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.item_venda import ItemVenda
 from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
+from src.backend.app.services.regras_service import MotorRegras
+from src.backend.app.services.identidade_cliente import chave_cliente, IdentidadeCliente
+from src.backend.app.services.datas import hoje_comercial
+from src.backend.app.services.evidencia_produtos import recompra_nao_confirmada, ultimos_pedidos_desconhecidos
 
 
 class RecompraService:
@@ -17,13 +22,13 @@ class RecompraService:
 
     def obter_identificador_grupo(self, cliente_id: int) -> Optional[str]:
         cliente = (
-            self.db.query(Cliente.grupo_economico, Cliente.cnpj_cpf)
+            self.db.query(Cliente.id, Cliente.grupo_economico)
             .filter(Cliente.id == cliente_id)
             .first()
         )
         if not cliente:
             return None
-        return cliente.grupo_economico or cliente.cnpj_cpf
+        return chave_cliente(cliente.id, cliente.grupo_economico)
 
     def obter_alertas_globais_alto_volume(
         self,
@@ -32,9 +37,9 @@ class RecompraService:
         ref_date: Optional[date] = None,
     ) -> List[Dict[str, Any]]:
         """Gera os cards prioritários para o Dashboard/Home."""
-        ref = ref_date or data_referencia or date.today()
+        ref = ref_date or data_referencia or hoje_comercial()
 
-        media_geral = self.db.query(func.avg(ItemVenda.quantidade)).scalar() or 10.0
+        media_geral = self.db.query(func.avg(ItemVenda.quantidade)).join(Venda,Venda.id==ItemVenda.venda_id).filter(Venda.data_venda<=ref).scalar() or 10.0
         corte_volume = float(media_geral) * 1.2
 
         registros = (
@@ -45,6 +50,7 @@ class RecompraService:
                 Cliente.cnpj_cpf,
                 Produto.id.label("produto_id"),
                 Produto.sku,
+                Produto.fabrica_id,
                 Produto.nome.label("produto_nome"),
                 Venda.data_venda,
                 ItemVenda.quantidade,
@@ -58,8 +64,15 @@ class RecompraService:
 
         agrupamento = defaultdict(lambda: {"datas": set(), "quantidades": [], "meta": None})
 
+        motor = MotorRegras(self.db)
+        sem_itens = ultimos_pedidos_desconhecidos(self.db,ref,motor.identidade)
         for r in registros:
-            grupo_chave = (r.grupo_economico or r.cnpj_cpf, r.produto_id)
+            if r.data_venda > ref or motor.bloqueada(r.cliente_id,r.fabrica_id,ref):
+                continue
+            pid = motor.produto(r.produto_id,r.cliente_id,ref,r.data_venda)
+            p = motor.produtos[pid]
+            r = SimpleNamespace(**{**r._mapping,'produto_id':pid,'sku':p.sku,'produto_nome':p.nome})
+            grupo_chave = (motor.identidade.id(r.cliente_id),pid)
             agrupamento[grupo_chave]["datas"].add(r.data_venda)
             agrupamento[grupo_chave]["quantidades"].append(r.quantidade)
             if not agrupamento[grupo_chave]["meta"]:
@@ -79,6 +92,9 @@ class RecompraService:
             intervalos = [(datas[i] - datas[i - 1]).days for i in range(1, len(datas))]
             periodicidade = sum(intervalos) / len(intervalos)
             ultima_compra = datas[-1]
+            meta = dados['meta']
+            if recompra_nao_confirmada(ultima_compra,sem_itens.get((grupo_id,meta.fabrica_id))):
+                continue
             dias_desde_ultima = (ref - ultima_compra).days
             dias_esperados = int(round(periodicidade))
             dias_atraso = dias_desde_ultima - dias_esperados
@@ -115,15 +131,17 @@ class RecompraService:
         margem_tolerancia_dias: int = 5,
     ) -> List[Dict[str, Any]]:
         """Mapeia os ciclos de recompra por produto para um cliente ou grupo econômico."""
-        ref = ref_date or data_referencia or date.today()
-        grupo_alvo = self.obter_identificador_grupo(cliente_id)
-        if not grupo_alvo:
+        ref = ref_date or data_referencia or hoje_comercial()
+        cliente = self.db.get(Cliente, cliente_id)
+        if cliente is None:
             return []
+        ids_clientes = IdentidadeCliente(self.db).fiscais(cliente_id)
 
         registros = (
             self.db.query(
                 Produto.id.label("produto_id"),
                 Produto.sku,
+                Produto.fabrica_id,
                 Produto.nome.label("produto_nome"),
                 Venda.data_venda,
                 ItemVenda.quantidade,
@@ -131,20 +149,23 @@ class RecompraService:
             .join(Cliente, Cliente.id == Venda.cliente_id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
             .join(Produto, Produto.id == ItemVenda.produto_id)
-            .filter(
-                or_(
-                    Cliente.grupo_economico == grupo_alvo,
-                    Cliente.cnpj_cpf == grupo_alvo,
-                )
-            )
+            .filter(Cliente.id.in_(ids_clientes), Venda.data_venda <= ref)
             .order_by(Venda.data_venda.asc())
             .all()
         )
 
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "compras": []})
+        motor = MotorRegras(self.db)
+        sem_itens = ultimos_pedidos_desconhecidos(self.db,ref,motor.identidade)
         for r in registros:
+            if motor.bloqueada(cliente_id,r.fabrica_id,ref):
+                continue
+            pid = motor.produto(r.produto_id,cliente_id,ref,r.data_venda)
+            p = motor.produtos[pid]
+            r = SimpleNamespace(**{**r._mapping,'produto_id':pid,'sku':p.sku,'produto_nome':p.nome})
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
+            produtos_map[r.produto_id]["fabrica_id"] = r.fabrica_id
             produtos_map[r.produto_id]["compras"].append((r.data_venda, r.quantidade))
 
         oportunidades = []
@@ -158,6 +179,8 @@ class RecompraService:
             intervalos = [(datas_unicas[i] - datas_unicas[i - 1]).days for i in range(1, len(datas_unicas))]
             periodicidade = sum(intervalos) / len(intervalos)
             ultima_compra = datas_unicas[-1]
+            if recompra_nao_confirmada(ultima_compra,sem_itens.get((motor.identidade.id(cliente_id),dados['fabrica_id']))):
+                continue
             dias_desde_ultima = (ref - ultima_compra).days
 
             dias_esperados = int(round(periodicidade))

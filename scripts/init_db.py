@@ -1,35 +1,13 @@
-<<<<<<< Updated upstream
-import os
+"""Inicializa o banco pela mesma cadeia de migrações usada no Render."""
 import sys
-
-# Adiciona a raiz do projeto ao sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from src.backend.app.core.database import Base, engine
-from src.backend.app.models.cliente import Cliente
-from src.backend.app.models.fabrica import Fabrica
-from src.backend.app.models.item_venda import ItemVenda
-from src.backend.app.models.produto import Produto
-from src.backend.app.models.usuario import Usuario
-from src.backend.app.models.venda import Venda
-
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from start import run_migrations, bootstrap_admin
 
 def init_db():
-    print("Iniciando a criação das tabelas no banco de dados...")
-    Base.metadata.create_all(bind=engine)
-    print("Tabelas criadas com sucesso!")
+    run_migrations()
+    bootstrap_admin()
+    print("Migrações aplicadas.")
 
-
-=======
-"""Atualiza o schema via migrações; nunca usa create_all na base operacional."""
-
-from pathlib import Path
-import os
-from alembic.config import Config
-from alembic import command
-
-raiz = Path(__file__).resolve().parents[1]
-os.chdir(raiz)
->>>>>>> Stashed changes
 if __name__ == "__main__":
-    command.upgrade(Config(str(raiz / "alembic.ini")), "head")
+    init_db()

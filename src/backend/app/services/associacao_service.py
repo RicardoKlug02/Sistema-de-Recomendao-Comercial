@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from src.backend.app.models.item_venda import ItemVenda
 from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
+from src.backend.app.services.regras_service import MotorRegras
+from src.backend.app.services.datas import hoje_comercial
 
 
 class AssociacaoService:
@@ -17,6 +19,7 @@ class AssociacaoService:
         registros = (
             self.db.query(Venda.id, ItemVenda.produto_id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .filter(Venda.data_venda <= hoje_comercial())
             .all()
         )
 
@@ -24,24 +27,28 @@ class AssociacaoService:
         for venda_id, produto_id in registros:
             cestas_map[venda_id].add(produto_id)
 
-        return [itens for itens in cestas_map.values() if itens]
+        return list(cestas_map.values())
 
     def recomendar_cross_selling(
         self,
         produto_ids: List[int],
         top_n: int = 4,
         min_confidence: float = 0.20,
+        cliente_id: int | None = None,
     ) -> List[Dict[str, Any]]:
         """Sugere produtos para cross-selling via cálculo exato de Confiança e Lift."""
         if not produto_ids:
             return []
 
-        cestas = self._carregar_cestas_pedidos()
+        motor = MotorRegras(self.db)
+        cestas = [{motor.produto(pid,cliente_id) for pid in cesta
+                   if cliente_id is None or not motor.bloqueada(cliente_id,motor.produtos[pid].fabrica_id)}
+                  for cesta in self._carregar_cestas_pedidos()]
         total_pedidos = len(cestas)
         if total_pedidos < 5:
             return []
 
-        alvo_set = set(produto_ids)
+        alvo_set = {motor.produto(pid,cliente_id) for pid in produto_ids}
         pedidos_com_antecedente = 0
         frequencia_individual: Dict[int, int] = defaultdict(int)
         coocorrencias: Dict[int, int] = defaultdict(int)

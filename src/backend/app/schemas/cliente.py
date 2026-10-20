@@ -13,7 +13,7 @@ class SanitizedBaseModel(BaseModel):
     @classmethod
     def sanitizar_strings(cls, value: object) -> object:
         if isinstance(value, str):
-            return html.escape(value.strip())
+            return value.strip()
         return value
 
 
@@ -55,6 +55,8 @@ class FabricaResumoOut(BaseModel):
     status: str
     status_gatilho: str
     risco_bloqueio_neste_mes: bool
+    situacao_atividade: str
+    situacao_recompra: str
 
 
 class ReposicaoOut(BaseModel):
@@ -65,6 +67,8 @@ class ReposicaoOut(BaseModel):
     dias_desde_ultima: int
     status: str
     volume_habitual: float
+    fabrica_id: int
+    fabrica: str
 
 
 class AbandonoOut(BaseModel):
@@ -74,6 +78,8 @@ class AbandonoOut(BaseModel):
     dias_parado: int
     ciclo_habitual: int
     total_vezes_comprado: int
+    fabrica_id: int
+    fabrica: str
 
 
 class YoYOut(BaseModel):
@@ -81,13 +87,26 @@ class YoYOut(BaseModel):
     periodo_comparado: str
     faturamento_recente: float
     faturamento_ano_anterior: float
-    crescimento_pct: Optional[float]
+    crescimento_pct: float
+
+
+class ProdutoSemConfirmacaoOut(BaseModel):
+    produto_id: int
+    sku: str
+    nome: str
+    ultima_compra_conhecida: date
+    pedido_sem_itens: date
+    mensagem: str
+    fabrica_id: int
+    fabrica: str
 
 
 class RecomendacaoProdutoOut(BaseModel):
     produto_id: int
     sku: str
     nome: str
+    fabrica_id: int
+    fabrica: str
     score: Optional[float] = None
     afinidade_percentual: Optional[float] = None
     classificacao: Optional[str] = None
@@ -101,12 +120,18 @@ class ClienteDetalhesOut(BaseModel):
     cnpj_cpf: Optional[str] = None
     micro_regiao: Optional[str] = None
     grupo_economico: Optional[str] = None
-    cidade: Optional[str] = None
-    estado: Optional[str] = None
     mensagem: Optional[str] = None
+    valor_comprado: float = 0
+    pedidos_emitidos: int = 0
+    clientes_agrupados: int = 1
+    cadastros_fiscais: List[dict] = []
+    ritmo_compras: Optional[dict] = None
+    comparacao_produtos: List[dict] = []
+    sugestoes_fabricas: List[dict] = []
     resumo_fabricas: List[FabricaResumoOut] = []
     sugestoes_reposicao: List[ReposicaoOut] = []
     produtos_em_abandono: List[AbandonoOut] = []
+    produtos_sem_confirmacao: List[ProdutoSemConfirmacaoOut] = Field(default_factory=list)
     performance_yoy: Optional[YoYOut] = None
     sugestoes_expansao_mix: List[RecomendacaoProdutoOut] = []
 

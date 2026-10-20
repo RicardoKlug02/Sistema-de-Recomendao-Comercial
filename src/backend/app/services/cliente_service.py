@@ -1,3 +1,4 @@
+from src.backend.app.services.datas import hoje_comercial
 from collections import defaultdict
 from datetime import date
 import re
@@ -7,12 +8,16 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.backend.app.core.security import gerar_blind_index
+from src.backend.app.services.identidade_cliente import IdentidadeCliente
+from src.backend.app.services.regras_service import MotorRegras
+from src.backend.app.services.ritmo_compras import calcular_ritmo, comparar_produtos
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.fabrica import Fabrica
 from src.backend.app.models.item_venda import ItemVenda
 from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
 from src.backend.app.services.colaborativo_service import ColaborativoService
+from src.backend.app.services.evidencia_produtos import ultimos_pedidos_sem_itens, recompra_nao_confirmada
 
 
 class ClienteService:
@@ -21,92 +26,47 @@ class ClienteService:
         self.db = db_session
         self.colaborativo = ColaborativoService(db_session=db_session)
 
-    def buscar_por_termo(self, termo: str, limite: int = 15) -> List[Dict[str, Any]]:
-        """Busca híbrida: Blind Index para documento ou varredura decifrada para texto."""
-        termo_limpo = termo.strip()
-        apenas_digitos = re.sub(r"\D", "", termo_limpo)
-
-        # 1. Busca Exata por CNPJ/CPF via Blind Index O(1)
-        if len(apenas_digitos) >= 8:
-            hash_busca = gerar_blind_index(apenas_digitos)
-            cliente = (
-                self.db.query(Cliente)
-                .filter(Cliente.cnpj_hash == hash_busca)
-                .first()
-            )
-            if cliente:
-                return [
-                    {
-                        "id": cliente.id,
-                        "razao_social": cliente.razao_social,
-                        "nome_fantasia": cliente.nome_fantasia,
-                        "cnpj_cpf": cliente.cnpj_cpf,
-                        "grupo_economico": cliente.grupo_economico,
-                        "cidade": cliente.cidade,
-                        "estado": cliente.estado,
-                    }
-                ]
-
-        # 2. Busca por Grupo Econômico ou Localidade (Indexados no banco)
-        clientes_query = (
-            self.db.query(Cliente)
-            .filter(
-                or_(
-                    Cliente.grupo_economico.ilike(f"%{termo_limpo}%"),
-                    Cliente.cidade.ilike(f"%{termo_limpo}%"),
-                )
-            )
-            .limit(limite)
-            .all()
-        )
-        if clientes_query:
-            return [
-                {
-                    "id": c.id,
-                    "razao_social": c.razao_social,
-                    "nome_fantasia": c.nome_fantasia,
-                    "cnpj_cpf": c.cnpj_cpf,
-                    "grupo_economico": c.grupo_economico,
-                    "cidade": c.cidade,
-                    "estado": c.estado,
-                }
-                for c in clientes_query
-            ]
-
-        # 3. Varredura decifrada em memória (Fallback para Razão Social / Nome Fantasia)
-        candidatos = self.db.query(Cliente).order_by(Cliente.id).yield_per(200)
-        termo_lower = termo_limpo.lower()
+    def buscar_por_termo(self, termo: str, limite: Optional[int] = 15, fabrica_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        # A cifra é decifrada em lotes; não existe corte arbitrário da carteira.
+        import unicodedata
+        def normalizar(s):
+            return "".join(c for c in unicodedata.normalize("NFKD", s or "")
+                           if not unicodedata.combining(c)).casefold()
+        alvo = normalizar(termo.strip())
+        if not alvo:
+            return []
+        digitos = re.sub(r"\D", "", termo)
+        hash_alvo = gerar_blind_index(digitos) if len(digitos) in (11, 14) else None
         resultados = []
-
-        for c in candidatos:
-            razao = (c.razao_social or "").lower()
-            fantasia = (c.nome_fantasia or "").lower()
-            if termo_lower in razao or termo_lower in fantasia:
-                resultados.append(
-                    {
-                        "id": c.id,
-                        "razao_social": c.razao_social,
-                        "nome_fantasia": c.nome_fantasia,
-                        "cnpj_cpf": c.cnpj_cpf,
-                        "grupo_economico": c.grupo_economico,
-                        "cidade": c.cidade,
-                        "estado": c.estado,
-                    }
-                )
-                if len(resultados) >= limite:
+        query = self.db.query(Cliente).order_by(Cliente.id)
+        if hash_alvo:
+            query = query.filter(Cliente.cnpj_hash == hash_alvo)
+        if fabrica_id is not None:
+            query = query.filter(self.db.query(Venda.id).filter(Venda.cliente_id == Cliente.id, Venda.fabrica_id == fabrica_id).exists())
+        for c in query.yield_per(200):
+            if (hash_alvo and c.cnpj_hash == hash_alvo) or any(alvo in normalizar(v) for v in
+                (c.razao_social, c.nome_fantasia, c.grupo_economico, c.cidade)):
+                resultados.append({"id": c.id, "razao_social": c.razao_social,
+                    "nome_fantasia": c.nome_fantasia, "cnpj_cpf": c.cnpj_cpf,
+                    "grupo_economico": c.grupo_economico, "cidade": c.cidade, "estado": c.estado})
+                if limite is not None and len(resultados) >= limite:
                     break
-
         return resultados
 
+
     def obter_dossie_cliente(
-        self, cliente_id: int, ref_date: Optional[date] = None
+        self, cliente_id: int, ref_date: Optional[date] = None, agrupar_rede: bool = True, fabrica_id: Optional[int] = None
     ) -> Optional[Dict[str, Any]]:
         """Dossiê analítico 360: histórico, ciclo de fábrica, reposição, abandono e YoY."""
-        ref = ref_date or date.today()
+        ref = ref_date or hoje_comercial()
 
         cliente = self.db.query(Cliente).filter(Cliente.id == cliente_id).first()
         if not cliente:
             return None
+
+        cliente_ids = [cliente.id]
+        if agrupar_rede and cliente.grupo_economico:
+            cliente_ids = IdentidadeCliente(self.db).fiscais(cliente.id)
 
         registros = (
             self.db.query(
@@ -120,22 +80,32 @@ class ClienteService:
                 Produto.sku,
                 Produto.nome.label("produto_nome"),
             )
-            .join(ItemVenda, ItemVenda.venda_id == Venda.id)
-            .join(Produto, Produto.id == ItemVenda.produto_id)
+            .outerjoin(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .outerjoin(Produto, Produto.id == ItemVenda.produto_id)
             .join(Fabrica, Fabrica.id == Venda.fabrica_id)
-            .filter(Venda.cliente_id == cliente_id)
+            .filter(Venda.cliente_id.in_(cliente_ids), Venda.data_venda <= ref,
+                    *([Venda.fabrica_id == fabrica_id] if fabrica_id is not None else []))
             .order_by(Venda.data_venda.asc())
             .all()
         )
 
+        regras = MotorRegras(self.db)
+        registros_comerciais = regras.registros(registros,cliente.id,ref,consolidar=agrupar_rede)
+        vendas_unicas = list({r.venda_id: r for r in registros}.values())
+        ritmo = calcular_ritmo(vendas_unicas, ref)
         base_info = {
             "cliente_id": cliente.id,
-            "cidade": cliente.cidade,
-            "estado": cliente.estado,
-            "razao_social": cliente.razao_social,
+            "razao_social": (cliente.grupo_economico or cliente.razao_social) if agrupar_rede else cliente.razao_social,
+            "cadastros_fiscais": [{"id": c.id, "razao_social": c.razao_social, "cnpj_cpf": c.cnpj_cpf} for c in self.db.query(Cliente).filter(Cliente.id.in_(cliente_ids)).order_by(Cliente.id)],
             "cnpj_cpf": cliente.cnpj_cpf,
             "micro_regiao": cliente.micro_regiao,
             "grupo_economico": cliente.grupo_economico,
+            "clientes_agrupados": len(cliente_ids),
+            "ritmo_compras": ritmo,
+            "comparacao_produtos": comparar_produtos(registros_comerciais, ref, ritmo["historico_suficiente"]),
+            "valor_comprado": round(sum({r.venda_id: r.valor_total for r in registros}.values()), 2),
+            "pedidos_emitidos": len({r.venda_id for r in registros}),
+            "produtos_sem_confirmacao": self._analisar_produtos_sem_confirmacao(registros_comerciais),
         }
 
         if not registros:
@@ -149,14 +119,24 @@ class ClienteService:
                 "sugestoes_expansao_mix": [],
             }
 
+        recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10, fabrica_id=fabrica_id, ref_date=ref)
+        recomendacoes = [r for r in recomendacoes if not regras.bloqueada(cliente.id,r['fabrica_id'],ref,consolidar=agrupar_rede)]
+        compradas = {r.fabrica_id for r in registros}
+        sugestoes_fabricas = {}
+        for sugestao in recomendacoes:
+            if sugestao["fabrica_id"] not in compradas:
+                fid = sugestao["fabrica_id"]
+                sugestoes_fabricas[fid] = {"id": fid, "nome": sugestao["fabrica"],
+                    "motivo": "Produtos desta fábrica são comprados por redes de consumo semelhante."}
         return {
             **base_info,
-            "resumo_fabricas": self._analisar_fabricas(registros, ref),
-            "sugestoes_reposicao": self._analisar_reposicao(registros, ref),
-            "produtos_em_abandono": self._analisar_produtos_abandono(registros, ref),
+            "sugestoes_fabricas": list(sugestoes_fabricas.values()),
+            "resumo_fabricas": self._analisar_fabricas(registros_comerciais, ref),
+            "sugestoes_reposicao": self._analisar_reposicao(registros_comerciais, ref),
+            "produtos_em_abandono": self._analisar_produtos_abandono(registros_comerciais, ref),
             "performance_yoy": self._analisar_yoy(registros, ref),
             "sugestoes_expansao_mix": (
-                self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=4)
+                recomendacoes[:4]
                 if hasattr(self.colaborativo, "recomendar_produtos_cliente")
                 else []
             ),
@@ -170,7 +150,7 @@ class ClienteService:
 
         status_fabricas = []
         for fid, dados in fabricas_map.items():
-            datas = sorted(dados["pedidos"].values())
+            datas = sorted(set(dados["pedidos"].values()))
             ultima_compra = datas[-1]
             dias_sem_comprar = (ref - ultima_compra).days
 
@@ -206,6 +186,10 @@ class ClienteService:
                     "dias_para_vencer": dias_para_vencer,
                     "data_limite_inatividade": limite_90d.strftime("%d/%m/%Y"),
                     "status": status,
+                    "situacao_atividade": "Inativa" if dias_sem_comprar >= 90 else "Ativa",
+                    "situacao_recompra": ("Histórico insuficiente para estimar o ciclo" if len(datas)<2 else
+                                          f"Recompra atrasada há {dias_sem_comprar - ciclo_medio} dias"
+                                          if dias_sem_comprar > ciclo_medio else "Dentro do ciclo de compra"),
                     "status_gatilho": gatilho,
                     "risco_bloqueio_neste_mes": (
                         limite_90d.month == ref.month and limite_90d.year == ref.year
@@ -217,22 +201,32 @@ class ClienteService:
         return status_fabricas
 
     def _analisar_reposicao(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        sem_itens = ultimos_pedidos_sem_itens(registros)
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "compras": []})
         for r in registros:
+            if r.produto_id is None:
+                continue
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
+            produtos_map[r.produto_id]["fabrica_id"] = r.fabrica_id
+            produtos_map[r.produto_id]["fabrica"] = r.fabrica_nome
             produtos_map[r.produto_id]["compras"].append((r.data_venda, r.quantidade))
 
         sugestoes = []
         for pid, dados in produtos_map.items():
-            compras = sorted(dados["compras"], key=lambda x: x[0])
-            datas = sorted({c[0] for c in compras})
+            por_data = defaultdict(int)
+            for data_compra, quantidade in dados["compras"]:
+                por_data[data_compra] += quantidade
+            compras = sorted(por_data.items())
+            datas = [c[0] for c in compras]
             if len(datas) < 2:
                 continue
 
             intervalos = [(datas[i] - datas[i - 1]).days for i in range(1, len(datas))]
             ciclo = int(sum(intervalos) / len(intervalos))
             ultima = datas[-1]
+            if recompra_nao_confirmada(ultima, sem_itens.get(dados['fabrica_id'])):
+                continue
             dias_desde_ultima = (ref - ultima).days
             atraso = dias_desde_ultima - ciclo
 
@@ -247,20 +241,28 @@ class ClienteService:
                         "dias_desde_ultima": dias_desde_ultima,
                         "status": "Reposição Atrasada" if atraso > 0 else "Janela Ideal",
                         "volume_habitual": round(float(media_qtd), 0),
+                        "fabrica_id": dados['fabrica_id'], "fabrica": dados['fabrica'],
                     }
                 )
 
         return sugestoes
 
     def _analisar_produtos_abandono(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        sem_confirmacao = {p['produto_id'] for p in self._analisar_produtos_sem_confirmacao(registros)}
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "datas": []})
         for r in registros:
+            if r.produto_id is None:
+                continue
             produtos_map[r.produto_id]["sku"] = r.sku
             produtos_map[r.produto_id]["nome"] = r.produto_nome
             produtos_map[r.produto_id]["datas"].append(r.data_venda)
+            produtos_map[r.produto_id]['fabrica_id'] = r.fabrica_id
+            produtos_map[r.produto_id]['fabrica'] = r.fabrica_nome
 
         abandonados = []
         for pid, dados in produtos_map.items():
+            if pid in sem_confirmacao:
+                continue
             datas = sorted(set(dados["datas"]))
             if len(datas) < 3:
                 continue
@@ -278,10 +280,26 @@ class ClienteService:
                         "dias_parado": dias_sem_comprar,
                         "ciclo_habitual": ciclo,
                         "total_vezes_comprado": len(datas),
+                        "fabrica_id": dados['fabrica_id'], "fabrica": dados['fabrica'],
                     }
                 )
 
         return abandonados
+
+    @staticmethod
+    def _analisar_produtos_sem_confirmacao(registros):
+        sem_itens = ultimos_pedidos_sem_itens(registros)
+        ultimos = {}
+        for r in registros:
+            if r.produto_id is not None and (r.produto_id not in ultimos or r.data_venda > ultimos[r.produto_id].data_venda):
+                ultimos[r.produto_id] = r
+        return [{"produto_id": pid, "sku": r.sku, "nome": r.produto_nome,
+                 "fabrica_id": r.fabrica_id, "fabrica": r.fabrica_nome,
+                 "ultima_compra_conhecida": r.data_venda.isoformat(),
+                 "pedido_sem_itens": sem_itens[r.fabrica_id].isoformat(),
+                 "mensagem": "Recompra não confirmada: existe pedido posterior sem itens."}
+                for pid, r in ultimos.items()
+                if recompra_nao_confirmada(r.data_venda, sem_itens.get(r.fabrica_id))]
 
     def _analisar_yoy(self, registros: list, ref: date) -> Dict[str, Any]:
         mes_recente_inicio = (ref.replace(day=1) - relativedelta(days=1)).replace(day=1)
@@ -306,7 +324,7 @@ class ClienteService:
         variacao = (
             ((fat_recente - fat_anterior) / fat_anterior * 100)
             if fat_anterior > 0
-            else None
+            else 0.0
         )
 
         return {
@@ -314,5 +332,5 @@ class ClienteService:
             "periodo_comparado": ano_anterior_inicio.strftime("%m/%Y"),
             "faturamento_recente": round(float(fat_recente), 2),
             "faturamento_ano_anterior": round(float(fat_anterior), 2),
-            "crescimento_pct": round(float(variacao), 2) if variacao is not None else None,
+            "crescimento_pct": round(float(variacao), 2),
         }

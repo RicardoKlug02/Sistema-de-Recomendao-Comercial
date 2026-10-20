@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: sistema-de-recomendao-comercial
+    runtime: python
+    plan: free
+    buildCommand: bash scripts/build_render.sh
+    startCommand: python start.py
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: SECRET_ENCRYPTION_KEY
+        sync: false
+      - key: BLIND_INDEX_SALT
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SERVE_FRONTEND
+        value: "true"
+      - key: MAIL_ENABLED
+        value: "false"

@@ -2,6 +2,11 @@ import math
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from src.backend.app.models.fabrica import Fabrica
+from src.backend.app.services.regras_service import MotorRegras
+from src.backend.app.services.identidade_cliente import chave_cliente
+from src.backend.app.services.datas import hoje_comercial
 
 from src.backend.app.models.cliente import Cliente
 from src.backend.app.models.item_venda import ItemVenda
@@ -16,32 +21,40 @@ class ColaborativoService:
 
     def _obter_identificador_grupo(self, cliente_id: int) -> Optional[str]:
         cliente = (
-            self.db.query(Cliente.grupo_economico, Cliente.cnpj_cpf)
+            self.db.query(Cliente.grupo_economico, Cliente.id)
             .filter(Cliente.id == cliente_id)
             .first()
         )
         if not cliente:
             return None
-        return cliente.grupo_economico or cliente.cnpj_cpf
+        return chave_cliente(cliente.id, cliente.grupo_economico)
 
-    def _carregar_perfis_consumo(self) -> Dict[str, Dict[int, float]]:
+    def _carregar_perfis_consumo(self, ref_date=None, motor=None, cliente_alvo=None) -> Dict[str, Dict[int, float]]:
         """Mapeia o consumo agregado por grupo econômico: {grupo: {produto_id: quantidade_total}}."""
         registros = (
             self.db.query(
                 Cliente.grupo_economico,
-                Cliente.cnpj_cpf,
+                Cliente.id,
                 ItemVenda.produto_id,
-                ItemVenda.quantidade,
+                Venda.data_venda,
+                func.sum(ItemVenda.quantidade).label("quantidade"),
             )
             .join(Venda, Venda.cliente_id == Cliente.id)
             .join(ItemVenda, ItemVenda.venda_id == Venda.id)
+            .filter(Venda.data_venda <= (ref_date or hoje_comercial()))
+            .group_by(Cliente.id, Cliente.grupo_economico, ItemVenda.produto_id, Venda.data_venda)
             .all()
         )
 
         perfis: Dict[str, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
         for r in registros:
-            chave_grupo = r.grupo_economico or r.cnpj_cpf
-            perfis[chave_grupo][r.produto_id] += float(r.quantidade)
+            chave_grupo = chave_cliente(r.id, r.grupo_economico)
+            pid = r.produto_id
+            if motor is not None:
+                if motor.bloqueada(cliente_alvo,motor.produtos[pid].fabrica_id,ref_date):
+                    continue
+                pid = motor.produto(pid,cliente_alvo,ref_date,r.data_venda)
+            perfis[chave_grupo][pid] += float(r.quantidade)
 
         return perfis
 
@@ -60,17 +73,20 @@ class ColaborativoService:
 
         return produto_escalar / (norma_a * norma_b)
 
-    def encontrar_grupos_similares(self, cliente_id: int, top_k: int = 5) -> List[Dict[str, Any]]:
+    def encontrar_grupos_similares(self, cliente_id: int, top_k: int = 5, ref_date=None) -> List[Dict[str, Any]]:
         grupo_alvo = self._obter_identificador_grupo(cliente_id)
         if not grupo_alvo:
             return []
 
-        perfis = self._carregar_perfis_consumo()
+        motor = MotorRegras(self.db)
+        perfis = self._carregar_perfis_consumo(ref_date,motor,cliente_id)
         if grupo_alvo not in perfis:
             return []
 
         perfil_alvo = perfis[grupo_alvo]
         scores = []
+        nomes = {chave_cliente(c.id,c.grupo_economico): (c.grupo_economico or c.razao_social).strip()
+                 for c in motor.identidade.clientes.values()}
 
         for outro_grupo, outro_perfil in perfis.items():
             if outro_grupo == grupo_alvo:
@@ -78,7 +94,7 @@ class ColaborativoService:
             sim = self._calcular_similaridade_cosseno(perfil_alvo, outro_perfil)
             if sim > 0:
                 scores.append({
-                    "grupo_economico": outro_grupo,
+                    "grupo_economico": nomes[outro_grupo],
                     "similaridade": round(sim * 100, 2),
                 })
 
@@ -90,18 +106,23 @@ class ColaborativoService:
         cliente_id: int,
         top_k_vizinhos: int = 5,
         top_n_produtos: int = 4,
+        fabrica_id: Optional[int] = None,
+        ref_date=None,
     ) -> List[Dict[str, Any]]:
         """Gera recomendações de mix cruzando com grupos econômicos de comportamento análogo."""
         grupo_alvo = self._obter_identificador_grupo(cliente_id)
         if not grupo_alvo:
             return []
 
-        perfis = self._carregar_perfis_consumo()
+        motor = MotorRegras(self.db)
+        perfis = self._carregar_perfis_consumo(ref_date,motor,cliente_id)
         if grupo_alvo not in perfis or len(perfis) < 2:
             return []
 
         perfil_alvo = perfis[grupo_alvo]
         produtos_ja_comprados = set(perfil_alvo.keys())
+        # Mesmo sem reescrever compras antigas, não sugerir o sucessor de um equivalente comprado.
+        produtos_ja_comprados |= {motor.produto(pid,cliente_id,ref_date) for pid in perfil_alvo}
 
         vizinhos_scores = []
         for outro_grupo, outro_perfil in perfis.items():
@@ -121,7 +142,7 @@ class ColaborativoService:
         candidatos: Dict[int, Dict[str, float]] = defaultdict(lambda: {"peso_compradores": 0.0, "volume_ponderado": 0.0})
 
         for outro_grupo, sim in vizinhos_top:
-            perfil_vizinho = perfis[outro_grupo]
+            perfil_vizinho = motor.perfil(perfis[outro_grupo],cliente_id,ref_date)
             for prod_id, qtd in perfil_vizinho.items():
                 if prod_id in produtos_ja_comprados:
                     continue
@@ -131,6 +152,9 @@ class ColaborativoService:
         if not candidatos:
             return []
 
+        if fabrica_id is not None:
+            permitidos = {p.id for p in self.db.query(Produto.id).filter(Produto.fabrica_id == fabrica_id)}
+            candidatos = {pid: m for pid, m in candidatos.items() if pid in permitidos}
         produtos_avaliados = []
         for prod_id, metricas in candidatos.items():
             afinidade_pct = (metricas["peso_compradores"] / soma_pesos) * 100
@@ -146,13 +170,14 @@ class ColaborativoService:
         top_produtos = produtos_avaliados[:top_n_produtos]
 
         ids = [p["produto_id"] for p in top_produtos]
-        produtos_db = {p.id: p for p in self.db.query(Produto).filter(Produto.id.in_(ids)).all()}
+        produtos_db = {p.id: (p, f) for p, f in self.db.query(Produto, Fabrica).join(Fabrica, Fabrica.id == Produto.fabrica_id).filter(Produto.id.in_(ids)).all()}
 
         recomendacoes = []
         for item in top_produtos:
-            prod = produtos_db.get(item["produto_id"])
-            if not prod:
+            par = produtos_db.get(item["produto_id"])
+            if not par:
                 continue
+            prod, fabrica = par
 
             nota = item["afinidade_pct"]
             if nota >= 75:
@@ -165,6 +190,7 @@ class ColaborativoService:
             recomendacoes.append({
                 "produto_id": prod.id,
                 "sku": prod.sku,
+                "fabrica_id": fabrica.id, "fabrica": fabrica.nome_fantasia,
                 "nome": prod.nome,
                 "afinidade_percentual": item["afinidade_pct"],
                 "classificacao": status,

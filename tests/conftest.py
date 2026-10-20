@@ -1,5 +1,5 @@
-import os
 import sys
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 import pytest
@@ -9,39 +9,17 @@ from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 from cryptography.fernet import Fernet
 
-# Os testes nunca usam credenciais, e-mails ou banco de produção.
-os.environ.update({
-    "DATABASE_URL": "postgresql://teste:teste@127.0.0.1:5432/teste",
-    "SECRET_KEY": "segredo-exclusivo-dos-testes",
-    "JWT_SECRET_KEY": "jwt-exclusivo-dos-testes",
-    "CHAVE_SERIALIZER": "aprovacao-exclusiva-dos-testes",
-    "SECRET_ENCRYPTION_KEY": Fernet.generate_key().decode(),
-    "EMAIL_PROVEDOR": "smtp",
-    "RESEND_API_KEY": "",
-    "MAIL_FROM": "sistema@teste.com",
-    "MAIL_USERNAME": "sistema@teste.com",
-    "MAIL_PASSWORD": "senha-ficticia",
-    "ADMIN_EMAIL": "admin@teste.com",
-    "BACKEND_URL": "https://api.teste.com",
-})
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["SECRET_KEY"] = "chave-exclusiva-dos-testes"
+os.environ["JWT_SECRET_KEY"] = "jwt-exclusivo-dos-testes"
+os.environ["SECRET_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
+os.environ["MAIL_ENABLED"] = "true"
+os.environ["MAIL_FROM"] = "teste@example.com"
+os.environ["SERVE_FRONTEND"] = "false"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
-
-# Testes nunca herdam banco ou segredos operacionais.
-import os
-from cryptography.fernet import Fernet
-
-os.environ.update(
-    DATABASE_URL="sqlite:///:memory:",
-    JWT_SECRET_KEY="test-jwt-" + "x" * 48,
-    CHAVE_SERIALIZER="test-serializer-" + "x" * 48,
-    BLIND_INDEX_SALT="test-index-" + "x" * 48,
-    SECRET_ENCRYPTION_KEY=Fernet.generate_key().decode(),
-    MAIL_FROM="test@example.com",
-    MAIL_ENABLED="True",
-)
 
 from src.backend.app.core.database import Base, get_db
 from src.backend.main import app
@@ -61,9 +39,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(autouse=True)
 def mock_email_service():
     """Intercepta chamadas de e-mail automaticamente em todos os testes."""
-    with patch(
-        "fastapi_mail.FastMail.send_message", new_callable=AsyncMock
-    ) as mock_mail:
+    with patch("fastapi_mail.FastMail.send_message", new_callable=AsyncMock) as mock_mail:
         yield mock_mail
 
 
@@ -86,7 +62,6 @@ def client(db_session):
         finally:
             pass
 
-    app.middleware_stack = None
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
         yield test_client

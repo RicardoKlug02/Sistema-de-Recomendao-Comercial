@@ -1,596 +1,368 @@
-"""Importação atômica: valida e concilia todo o lote antes de persistir."""
-
-from collections import Counter
-from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+"""Importação transacional dos dois relatórios do ERP e de planilhas tabulares."""
+import hashlib
+import math
 import re
 import unicodedata
-import zipfile
+from pathlib import Path
+from typing import Any, Dict, Optional
 import pandas as pd
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 from src.backend.app.core.security import gerar_blind_index
+from src.backend.app.services.datas import hoje_comercial
 from src.backend.app.models import Cliente, Fabrica, ItemVenda, Produto, Venda, Vendedor
 
 
-class ErroImportacao(ValueError):
-    pass
+def normalizar_coluna(valor):
+    texto = unicodedata.normalize("NFKD", str(valor))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "_", texto.lower()).strip("_")
+
+
+def texto(valor):
+    return "" if pd.isna(valor) else str(valor).strip()
+
+
+def identificador(valor):
+    return re.sub(r"^([0-9]+)\.0+$", r"\1", texto(valor))
 
 
 class ExcelService:
-    MAX_LINHAS = 50000
-
-    def __init__(self, db_session):
+    def __init__(self, db_session: Session):
         self.db = db_session
 
     @staticmethod
-    def normalizar_sku(valor):
-        # SKU é identidade do ERP: não remover sufixos de embalagem.
-        return str(valor).strip() if valor is not None else ""
+    def normalizar_sku(sku_raw: Optional[str]) -> str:
+        return re.sub(r"(?<=\d)[uU]$", "", identificador(sku_raw))
 
-    @staticmethod
-    def _texto(valor):
-        return "" if valor is None or pd.isna(valor) else str(valor).strip()
+    def _anonimizar(self, valor: Any) -> str:
+        # Compatibilidade com scripts antigos; a carga operacional conserva os nomes.
+        return hashlib.sha256(texto(valor).encode()).hexdigest()[:14].upper()
 
-    @staticmethod
-    def _chave(valor):
-        texto = (
-            unicodedata.normalize("NFKD", str(valor))
-            .encode("ascii", "ignore")
-            .decode()
-            .lower()
-        )
-        return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
-
-    @staticmethod
-    def _numero(valor):
-        if valor is None or pd.isna(valor) or str(valor).strip() == "":
-            raise ErroImportacao("Valor numérico ausente.")
-        s = str(valor).replace("R$", "").replace("\xa0", "").replace(" ", "").strip()
-        if "," in s:
-            s = s.replace(".", "").replace(",", ".")
+    def _converter_valor_br(self, valor: Any) -> float:
+        if pd.isna(valor) or valor is None or texto(valor) == "":
+            raise ValueError("Valor numérico obrigatório não preenchido na planilha.")
+        numero = texto(valor).replace("R$", "").replace("\u00a0", "").replace(" ", "")
+        if "," in numero:
+            numero = numero.replace(".", "").replace(",", ".")
         try:
-            n = Decimal(s)
-        except InvalidOperation:
-            raise ErroImportacao(f"Valor numérico inválido: {s[:40]}.")
-        if not n.is_finite():
-            raise ErroImportacao("Valor numérico não finito.")
-        return n
-
-    def _converter_valor_br(self, valor):
-        return self._numero(valor)
+            resultado = float(numero)
+        except ValueError:
+            raise ValueError("Valor numérico inválido na planilha.")
+        if not math.isfinite(resultado):
+            raise ValueError("Valor não finito na planilha.")
+        return resultado
 
     @staticmethod
-    def _pedido(valor):
-        s = ExcelService._texto(valor)
-        if re.fullmatch(r"\d+\.0", s):
-            s = s[:-2]
-        return s
-
-    def _ler(self, caminho):
-        # Não confiar na extensão: detectar assinatura e limitar expansão XLSX.
-        with open(caminho, "rb") as arq:
-            assinatura = arq.read(8)
-        if assinatura.startswith(b"PK"):
-            try:
-                with zipfile.ZipFile(caminho) as pacote:
-                    if sum(i.file_size for i in pacote.infolist()) > 80 * 1024 * 1024:
-                        raise ErroImportacao(
-                            "Planilha excede o limite de 80 MB descompactados."
-                        )
-            except zipfile.BadZipFile:
-                raise ErroImportacao("Arquivo XLSX inválido.")
-            engine = "openpyxl"
-        elif assinatura == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-            engine = "xlrd"
-        else:
-<<<<<<< Updated upstream
-            df["valor_total"] = 0.0
-
-        df = df.map(self.sanitizar_valor_planilha)
-
-=======
-            raise ErroImportacao("O conteúdo não é uma planilha XLS/XLSX válida.")
-        try:
-            df = pd.read_excel(
-                caminho,
-                header=None,
-                dtype=object,
-                engine=engine,
-                nrows=self.MAX_LINHAS + 50,
-            )
-        except ErroImportacao:
-            raise
-        except Exception:
-            raise ErroImportacao(
-                "Não foi possível ler a planilha. Verifique se está íntegra e sem senha."
-            )
-        if len(df) > self.MAX_LINHAS:
-            raise ErroImportacao(f"Limite de {self.MAX_LINHAS} linhas excedido.")
-        if df.empty:
-            raise ErroImportacao("A planilha está vazia.")
->>>>>>> Stashed changes
-        return df
-
-    ALIASES = {
-        "pedido": {
-            "pedido",
-            "numero_pedido",
-            "n_pedido",
-            "no_pedido",
-            "numero_do_pedido",
-        },
-        "cnpj_cpf": {"cnpj", "cpf", "cnpj_cpf", "cpf_cnpj"},
-        "cliente": {"cliente", "razao_social", "nome_cliente", "nome_do_cliente"},
-        "fabrica": {"fabrica", "industria", "fornecedor", "representada"},
-        "valor_total": {
-            "valor_total",
-            "total",
-            "total_pedido",
-            "valor_do_pedido",
-            "valor",
-            "total_em_produtos",
-        },
-        "data": {
-            "data",
-            "data_venda",
-            "data_pedido",
-            "emissao",
-            "data_emissao",
-            "data_de_emissao",
-        },
-        "vendedor": {"vendedor", "vendedor_a", "representante"},
-        "rede": {"rede", "grupo", "grupo_economico", "rede_de_clientes"},
-        "cidade": {"cidade", "municipio"},
-        "estado": {"estado", "uf"},
-        "micro_regiao": {"micro_regiao", "microrregiao", "regiao"},
-        "sku": {"sku", "codigo", "codigo_produto", "cod_produto"},
-        "nome_produto": {"produto", "nome_produto", "descricao", "descricao_produto"},
-        "quantidade": {"quantidade", "qtd", "qtde"},
-        "preco_unitario": {"preco_unitario", "valor_unitario", "preco", "unitario"},
-        "subtotal": {"subtotal", "total_item", "valor_item"},
-        "categoria": {"categoria", "linha"},
-    }
-
-    def _tabular(self, bruto, obrigatorias):
-        for indice, linha in bruto.head(30).iterrows():
-            mapeamento = {}
-            for col, valor in linha.items():
-                chave = self._chave(valor)
-                for destino, aliases in self.ALIASES.items():
-                    if chave in aliases and destino not in mapeamento.values():
-                        mapeamento[col] = destino
-                        break
-            if obrigatorias <= set(mapeamento.values()):
-                dados = (
-                    bruto.loc[indice + 1 :, list(mapeamento)]
-                    .rename(columns=mapeamento)
-                    .copy()
-                )
-                dados["_linha"] = dados.index + 1
-                return dados.dropna(how="all", subset=list(mapeamento.values()))
-        return None
-
-    def _limpar_excel_cabecalho(self, caminho):
-        df = self._tabular(
-            self._ler(caminho),
-            {"pedido", "cnpj_cpf", "cliente", "fabrica", "data", "valor_total"},
-        )
-        if df is None:
-            raise ErroImportacao(
-                "Pedidos: cabeçalho obrigatório não encontrado (pedido, CNPJ/CPF, cliente, fábrica, data, valor total)."
-            )
-        # Apenas rodapés explicitamente identificados são ignorados.
-        return df[~df["pedido"].map(self._texto).str.lower().str.startswith("total")]
-
-    def _limpar_excel_produtos(self, caminho):
-        bruto = self._ler(caminho)
-        df = self._tabular(
-            bruto, {"pedido", "sku", "nome_produto", "quantidade", "preco_unitario"}
-        )
-        if df is not None:
-            return df[
-                ~df["pedido"].map(self._texto).str.lower().str.startswith("total")
-            ]
-        # Relatório legado: blocos "Produto: SKU - Nome" seguidos dos pedidos.
-        itens, sku, nome = [], "", ""
-        for indice, row in bruto.iterrows():
-            c0 = self._texto(row.iloc[0])
-            if c0.startswith("Produto:"):
-                partes = c0.removeprefix("Produto:").strip().split(" - ", 1)
-                if len(partes) != 2:
-                    raise ErroImportacao(
-                        f"Itens, linha {indice + 1}: seção de produto inválida."
-                    )
-                sku, nome = partes
-                continue
-            if not sku or c0.startswith(("Data", "Filtros", "Relatório", "Total")):
-                continue
-            # Rodapé do ERP: contagem de pedidos e totais, sem data, cliente ou preço.
-            if (
-                not c0
-                and len(row) >= 7
-                and all(pd.isna(row.iloc[i]) for i in [2, 3, 4])
-            ):
-                continue
-            pedido = self._pedido(row.iloc[1]) if len(row) > 1 else ""
-            if not pedido:
-                continue
-            if not pedido.isdigit():
-                raise ErroImportacao(f"Itens, linha {indice + 1}: pedido inválido.")
-            if len(row) < 7:
-                raise ErroImportacao(f"Itens, linha {indice + 1}: colunas incompletas.")
-            itens.append(
-                dict(
-                    pedido=pedido,
-                    sku=sku,
-                    nome_produto=nome,
-                    preco_unitario=row.iloc[4],
-                    quantidade=row.iloc[5],
-                    subtotal=row.iloc[6],
-                    _linha=indice + 1,
-                )
-            )
-        if not itens:
-            raise ErroImportacao("Nenhum item reconhecido na planilha de produtos.")
-        return pd.DataFrame(itens)
-
-    def _validar(self, cab, prod):
-        pedidos, itens = {}, {}
-        for _, row in cab.iterrows():
-            linha = row.get("_linha", "?")
-            try:
-                pedido = self._pedido(row.get("pedido"))
-                if not pedido or len(pedido) > 50:
-                    raise ErroImportacao("Número de pedido ausente ou muito longo.")
-                if pedido in pedidos:
-                    raise ErroImportacao(f"Pedido {pedido} duplicado no cabeçalho.")
-                documento = re.sub(r"\D", "", self._texto(row.get("cnpj_cpf")))
-                if len(documento) not in (11, 14):
-                    raise ErroImportacao(
-                        "CNPJ/CPF deve ter 11 ou 14 dígitos, preservando zeros à esquerda."
-                    )
-                nome, fabrica = (
-                    self._texto(row.get("cliente")),
-                    self._texto(row.get("fabrica")),
-                )
-                if not nome or not fabrica:
-                    raise ErroImportacao("Cliente e fábrica são obrigatórios.")
-                if len(nome.encode()) > 300 or len(fabrica) > 100:
-                    raise ErroImportacao("Nome de cliente ou fábrica excede o limite.")
-                raw = row.get("data")
-                if isinstance(raw, (int, float)) or not self._texto(raw):
-                    raise ErroImportacao("Data ausente ou numérica sem formatação.")
-                try:
-                    if isinstance(raw, (date, datetime)):
-                        data_venda = raw.date() if isinstance(raw, datetime) else raw
-                    else:
-                        s = str(raw).strip()
-                        data_venda = datetime.strptime(
-                            s,
-                            "%Y-%m-%d"
-                            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s)
-                            else "%d/%m/%Y",
-                        ).date()
-                except (ValueError, TypeError):
-                    raise ErroImportacao(
-                        "Data inválida; utilize DD/MM/AAAA ou AAAA-MM-DD."
-                    )
-                if data_venda > date.today():
-                    raise ErroImportacao("Data de venda futura não permitida.")
-                total = self._numero(row.get("valor_total"))
-                if total <= 0 or total >= Decimal("100000000000000"):
-                    raise ErroImportacao("Total do pedido fora do intervalo permitido.")
-                if total != total.quantize(Decimal(".01")):
-                    raise ErroImportacao(
-                        "Total do pedido deve ter até duas casas decimais."
-                    )
-                dados = {
-                    c: self._texto(row.get(c))
-                    for c in ["vendedor", "rede", "cidade", "estado", "micro_regiao"]
-                }
-                for c, limite in [
-                    ("vendedor", 100),
-                    ("rede", 100),
-                    ("cidade", 100),
-                    ("estado", 2),
-                    ("micro_regiao", 50),
-                ]:
-                    if len(dados[c]) > limite:
-                        raise ErroImportacao(f"{c} excede {limite} caracteres.")
-                pedidos[pedido] = dict(
-                    pedido=pedido,
-                    documento=documento,
-                    hash=gerar_blind_index(documento),
-                    nome=nome,
-                    fabrica=fabrica,
-                    data=data_venda,
-                    total=total,
-                    **dados,
-                )
-            except ErroImportacao as e:
-                raise ErroImportacao(f"Pedidos, linha {linha}: {e}")
-        if not pedidos:
-            raise ErroImportacao("Nenhum pedido encontrado.")
-        duplicados = set()
-        for _, row in prod.iterrows():
-            linha = row.get("_linha", "?")
-            try:
-                pedido = self._pedido(row.get("pedido"))
-                if pedido not in pedidos:
-                    raise ErroImportacao(
-                        f"Item sem cabeçalho correspondente: pedido {pedido}."
-                    )
-                sku, nome = (
-                    self.normalizar_sku(self._texto(row.get("sku"))),
-                    self._texto(row.get("nome_produto")),
-                )
-                if not sku or not nome:
-                    raise ErroImportacao("SKU e nome são obrigatórios.")
-                categoria = self._texto(row.get("categoria"))
-                if len(sku) > 150 or len(nome) > 255 or len(categoria) > 100:
-                    raise ErroImportacao("SKU, nome ou categoria excede o limite.")
-                qtd, preco = (
-                    self._numero(row.get("quantidade")),
-                    self._numero(row.get("preco_unitario")),
-                )
-                if qtd <= 0 or qtd != qtd.to_integral_value() or qtd > 2147483647:
-                    raise ErroImportacao(
-                        "Quantidade deve ser inteira e positiva; frações não são suportadas."
-                    )
-                if (
-                    preco <= 0
-                    or preco >= Decimal("100000000000000")
-                    or preco != preco.quantize(Decimal(".01"))
-                ):
-                    raise ErroImportacao(
-                        "Preço deve ser positivo e ter até duas casas decimais."
-                    )
-                subtotal = (qtd * preco).quantize(
-                    Decimal(".01"), rounding=ROUND_HALF_UP
-                )
-                if self._texto(row.get("subtotal")):
-                    declarado = self._numero(row["subtotal"])
-                    # ERP exibe preço arredondado a centavos. Preservar subtotal oficial,
-                    # aceitando somente a diferença matematicamente possível desse arredondamento.
-                    tolerancia = qtd * Decimal(".005") + Decimal(".005")
-                    if (
-                        declarado <= 0
-                        or declarado != declarado.quantize(Decimal(".01"))
-                        or abs(declarado - subtotal) > tolerancia
-                    ):
-                        raise ErroImportacao(
-                            "Subtotal diverge de quantidade × preço além da tolerância de arredondamento."
-                        )
-                    subtotal = declarado
-                chave = (pedido, sku, qtd, preco)
-                if chave in duplicados:
-                    raise ErroImportacao(
-                        f"Item duplicado no pedido {pedido}, SKU {sku}."
-                    )
-                duplicados.add(chave)
-                itens.setdefault(pedido, []).append(
-                    dict(
-                        sku=sku,
-                        nome=nome,
-                        quantidade=int(qtd),
-                        preco=preco,
-                        subtotal=subtotal,
-                        categoria=categoria,
-                    )
-                )
-            except ErroImportacao as e:
-                raise ErroImportacao(f"Itens, linha {linha}: {e}")
-        for pedido, p in pedidos.items():
-            if pedido not in itens:
-                raise ErroImportacao(
-                    f"Pedido {pedido} sem itens. Nenhum dado foi alterado."
-                )
-            soma = sum((i["subtotal"] for i in itens[pedido]), Decimal(0))
-            if abs(soma - p["total"]) > Decimal(".01"):
-                raise ErroImportacao(
-                    f"Pedido {pedido}: soma dos itens ({soma}) diverge do total ({p['total']}). Verifique descontos, frete ou itens faltantes."
-                )
-        return pedidos, itens
-
-    def importar_processo_completo(
-        self, path_cab, path_itens, permitir_atualizacao=False, commit=True
-    ):
-        try:
-            pedidos, itens = self._validar(
-                self._limpar_excel_cabecalho(path_cab),
-                self._limpar_excel_produtos(path_itens),
-            )
-            resultado = self._salvar(pedidos, itens, permitir_atualizacao)
-            if commit:
-                self.db.commit()
-            return resultado
-        except ErroImportacao as e:
-            self.db.rollback()
-            return {"status": "erro", "mensagem": str(e)}
-        except SQLAlchemyError:
-            self.db.rollback()
-            return {
-                "status": "erro",
-                "mensagem": "Conflito ou falha no banco. Nenhum dado da carga foi alterado. Verifique a configuração e tente novamente.",
-            }
-
-    def _salvar(self, pedidos, itens, permitir_atualizacao):
-        if self.db.bind.dialect.name == "postgresql":
-            # Serializa cargas, inclusive inserts ainda sem linhas bloqueáveis.
-            self.db.execute(text("SELECT pg_advisory_xact_lock(735291)"))
-        fabricas = {}
-        for f in self.db.query(Fabrica).all():
-            chave = f.nome_fantasia.casefold()
-            if chave in fabricas:
-                raise ErroImportacao(
-                    "Há fábricas com nomes duplicados na base; revise o cadastro."
-                )
-            fabricas[chave] = f
-        if self.db.query(Cliente).filter(Cliente.cnpj_hash.is_(None)).first():
-            raise ErroImportacao(
-                "Existem clientes legados sem índice de documento. Reconcilie a base antes de importar para evitar duplicidades."
-            )
-        clientes = {c.cnpj_hash: c for c in self.db.query(Cliente).all() if c.cnpj_hash}
-        vendedores = {v.nome.casefold(): v for v in self.db.query(Vendedor).all()}
-        produtos = {p.sku: p for p in self.db.query(Produto).all()}
-        vendas = {
-            v.numero_pedido: v
-            for v in self.db.query(Venda).filter(Venda.numero_pedido.in_(pedidos)).all()
+    def _mapear_colunas(df):
+        aliases = {
+            "pedido": ("pedido", "numero_do_pedido", "numero_pedido", "n_pedido"),
+            "data": ("data", "data_emissao", "data_de_emissao", "data_do_pedido", "data_pedido"),
+            "fabrica": ("fabrica", "representada", "industria", "fabricante"),
+            "cliente": ("razao_social", "cliente", "nome_do_cliente"),
+            "nome_fantasia": ("nome_fantasia", "fantasia"),
+            "cnpj_cpf": ("cnpj_cpf", "cnpj", "cpf", "cpf_cnpj"),
+            "vendedor": ("vendedor", "vendedor_a", "representante", "nome_vendedor"),
+            "rede": ("rede", "rede_de_clientes", "grupo", "grupo_economico"),
+            "tipo_pedido": ("tipo_pedido", "tipo_do_pedido", "tipo"),
+            "cidade": ("cidade", "municipio"), "estado": ("estado", "uf"),
+            "cep": ("cep",), "valor_total": ("valor_total", "total", "valor", "valor_do_pedido", "total_pedido", "total_em_produtos"),
+            "sku": ("sku", "codigo", "codigo_produto", "codigo_do_produto", "cod_produto"),
+            "nome_produto": ("produto", "nome_produto", "descricao", "descricao_produto"),
+            "quantidade": ("quantidade", "qtd", "qtde"), "preco_unitario": ("preco_unitario", "preco", "valor_unitario"),
         }
-        contagem = dict(
-            adicionados=0,
-            atualizados=0,
-            inalterados=0,
-            itens=sum(len(v) for v in itens.values()),
-        )
-        for num, p in pedidos.items():
-            fabrica = fabricas.get(p["fabrica"].casefold())
-            if not fabrica:
-                fabrica = Fabrica(nome_fantasia=p["fabrica"])
-                self.db.add(fabrica)
-                self.db.flush()
-                fabricas[p["fabrica"].casefold()] = fabrica
-            cliente = clientes.get(p["hash"])
-            if not cliente:
-                cliente = Cliente(
-                    cnpj_cpf=p["documento"],
-                    cnpj_hash=p["hash"],
-                    razao_social=p["nome"],
-                    nome_fantasia=p["nome"],
-                )
-                self.db.add(cliente)
-                self.db.flush()
-                clientes[p["hash"]] = cliente
-            # Nunca apagar metadados quando a planilha omite campos opcionais.
-            for fonte, destino in [
-                ("rede", "grupo_economico"),
-                ("cidade", "cidade"),
-                ("estado", "estado"),
-                ("micro_regiao", "micro_regiao"),
-            ]:
-                if p[fonte]:
-                    setattr(cliente, destino, p[fonte])
-            vendedor = None
-            if p["vendedor"]:
-                chave = p["vendedor"].casefold()
-                vendedor = vendedores.get(chave)
-                if not vendedor:
-                    vendedor = Vendedor(nome=p["vendedor"])
-                    self.db.add(vendedor)
-                    self.db.flush()
-                    vendedores[chave] = vendedor
-            novos_itens = []
-            for i in itens[num]:
-                produto = produtos.get(i["sku"])
-                if produto and produto.fabrica_id != fabrica.id:
-                    raise ErroImportacao(
-                        f"SKU {i['sku']} já pertence a outra fábrica. Revise a identidade do produto."
-                    )
-                if not produto:
-                    produto = Produto(
-                        sku=i["sku"],
-                        nome=i["nome"],
-                        fabrica_id=fabrica.id,
-                        categoria=i["categoria"] or None,
-                    )
-                    self.db.add(produto)
-                    self.db.flush()
-                    produtos[i["sku"]] = produto
-                elif i["categoria"]:
-                    produto.categoria = i["categoria"]
-                novos_itens.append(
-                    (produto.id, i["quantidade"], i["preco"], i["subtotal"])
-                )
-            venda = vendas.get(num)
+        df.columns = [normalizar_coluna(c) for c in df.columns]
+        rename = {}
+        for destino, nomes in aliases.items():
+            origem = next((c for c in nomes if c in df.columns), None)
+            if origem:
+                rename[origem] = destino
+        return df.rename(columns=rename).loc[:, lambda x: ~x.columns.duplicated()]
+
+    def _ler_tabela(self, arquivo):
+        bruto = pd.read_excel(arquivo, header=None, dtype=str)
+        for i, row in bruto.head(40).iterrows():
+            cols = {normalizar_coluna(v) for v in row.dropna()}
+            if cols.intersection({"pedido", "numero_pedido", "numero_do_pedido"}) and len(cols) >= 3:
+                df = bruto.iloc[i + 1:].copy()
+                df.columns = bruto.iloc[i].tolist()
+                return self._mapear_colunas(df.dropna(how="all"))
+        raise ValueError("Cabeçalho não encontrado. Use colunas Pedido, Data, Cliente, CNPJ/CPF, Fábrica e Valor Total.")
+
+    def _limpar_excel_cabecalho(self, caminho_arquivo):
+        df = self._ler_tabela(caminho_arquivo)
+        obrigatorias = {"pedido", "data", "fabrica", "cnpj_cpf", "valor_total"}
+        faltantes = obrigatorias - set(df.columns)
+        if faltantes:
+            raise ValueError("Colunas obrigatórias ausentes: " + ", ".join(sorted(faltantes)))
+        if "cliente" not in df:
+            if "nome_fantasia" not in df:
+                raise ValueError("Informe a coluna Cliente ou Razão Social.")
+            df["cliente"] = df["nome_fantasia"]
+        df = df.dropna(subset=["pedido"]).copy()
+        df["pedido"] = df["pedido"].map(identificador)
+        df = df[df["pedido"] != ""]
+        if df.empty:
+            raise ValueError("A planilha de pedidos está vazia.")
+        df["valor_total"] = df["valor_total"].map(self._converter_valor_br)
+        return df.reset_index(drop=True)
+
+    def _limpar_excel_produtos(self, caminho_arquivo):
+        bruto = pd.read_excel(caminho_arquivo, header=None, dtype=str)
+        colunas = ["sku", "nome_produto", "pedido", "preco_unitario", "quantidade"]
+        if bruto.empty:
+            return pd.DataFrame(columns=colunas)
+        if not bruto[0].fillna("").str.strip().str.startswith("Produto:").any():
+            df = self._ler_tabela(caminho_arquivo)
+            faltantes = set(colunas) - set(df.columns)
+            if faltantes:
+                raise ValueError("Colunas de itens ausentes: " + ", ".join(sorted(faltantes)))
+            df = df.dropna(subset=["pedido", "sku"]).copy()
+            df["pedido"] = df["pedido"].map(identificador)
+            df["sku"] = df["sku"].map(self.normalizar_sku)
+            for c in ("preco_unitario", "quantidade"):
+                df[c] = df[c].map(self._converter_valor_br)
+            return df
+        itens, sku, nome = [], None, None
+        for _, row in bruto.iterrows():
+            inicio = texto(row.iloc[0])
+            if inicio.startswith("Produto:"):
+                descricao = inicio.removeprefix("Produto:").strip()
+                partes = re.split(r"\s+-\s+", descricao, maxsplit=1)
+                if len(partes) != 2:
+                    partes = re.split(r"\s*-\s*", descricao, maxsplit=1)
+                sku = self.normalizar_sku(partes[0])
+                nome = partes[1] if len(partes) == 2 else descricao
+                continue
+            if len(row) < 6 or inicio.startswith(("Data", "Filtros", "Relatório", "Total")):
+                continue
+            # O ERP inclui totalizadores com contagem na coluna Pedido.
+            # Não são itens: não têm data, cliente, criador nem preço unitário.
+            if not inicio and all(pd.isna(row.iloc[i]) for i in (2, 3, 4)):
+                continue
+            pedido = identificador(row.iloc[1])
+            if not sku or not re.fullmatch(r"[0-9]+", pedido):
+                continue
+            itens.append({"sku": sku, "nome_produto": nome, "pedido": pedido,
+                          "preco_unitario": self._converter_valor_br(row.iloc[4]),
+                          "quantidade": self._converter_valor_br(row.iloc[5])})
+        return pd.DataFrame(itens, columns=colunas)
+
+    def importar_processo_completo(self, path_cab: str, path_itens: str) -> Dict[str, Any]:
+        try:
+            resultado = self._validar_e_salvar(
+                self._limpar_excel_cabecalho(path_cab), self._limpar_excel_produtos(path_itens), commit=False)
+            self.db.commit()
+            return {"status": "sucesso", **resultado}
+        except ValueError as exc:
+            self.db.rollback()
+            return {"status": "erro", "mensagem": str(exc), "tipo": "validacao"}
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _preparar_carga(self, df_cab, df_prod):
+        if df_cab.empty:
+            raise ValueError("A planilha de pedidos está vazia.")
+        # Valida toda a carga antes de qualquer substituição dos itens.
+        chaves = set()
+        pedidos_fabricas = {}
+        cabecalhos = []
+        hoje = hoje_comercial()
+        for linha, row in df_cab.iterrows():
+            pedido = identificador(row["pedido"])
+            if "tipo_pedido" in row and normalizar_coluna(row["tipo_pedido"]) not in {"venda", "pedido_de_venda"}:
+                raise ValueError(f"Pedido {pedido}: somente pedidos do tipo Venda são permitidos. Confira o filtro do relatório.")
+            fabrica = texto(row.get("fabrica"))
+            doc = re.sub(r"\D", "", texto(row.get("cnpj_cpf")))
+            if not pedido or not fabrica or len(doc) not in (11, 14):
+                raise ValueError(f"Pedido na linha {linha + 1}: informe número, fábrica e CNPJ/CPF com 11 ou 14 dígitos.")
+            chave = (fabrica.casefold(), pedido)
+            if chave in chaves:
+                raise ValueError(f"Pedido {pedido} duplicado na mesma fábrica.")
+            chaves.add(chave)
+            pedidos_fabricas.setdefault(pedido, set()).add(fabrica.casefold())
+            try:
+                valor_data = row.get("data")
+                if re.match(r"^\d{4}-\d{2}-\d{2}", str(valor_data)):
+                    data = pd.to_datetime(valor_data, format="ISO8601", errors="raise")
+                else:
+                    data = pd.to_datetime(valor_data, dayfirst=True, errors="raise")
+                if pd.isna(data):
+                    raise ValueError()
+                data = data.date()
+            except (ValueError, TypeError):
+                raise ValueError(f"Pedido {pedido}: data inválida.")
+            if data > hoje:
+                raise ValueError(f"Pedido {pedido}, fábrica {fabrica}, linha {linha + 1}: data de emissão "
+                                 f"{data:%d/%m/%Y} posterior a hoje ({hoje:%d/%m/%Y}). "
+                                 "Corrija a planilha e confira novamente. Nenhum pedido desta carga foi importado.")
+            valor = self._converter_valor_br(row.get("valor_total"))
+            if valor < 0:
+                raise ValueError(f"Pedido {pedido}: valor total negativo.")
+            cabecalhos.append((row, pedido, fabrica, doc, data, valor))
+        grupos, ignorados = {}, 0
+        for _, item in df_prod.iterrows():
+            pedido = identificador(item["pedido"])
+            fabricas = pedidos_fabricas.get(pedido)
+            if not fabricas:
+                ignorados += 1
+                continue
+            fabrica_item = texto(item.get("fabrica")).casefold()
+            if len(fabricas) > 1 and not fabrica_item:
+                raise ValueError(f"Pedido {pedido}: número repetido entre fábricas. Informe a fábrica na planilha de itens.")
+            fabrica_item = fabrica_item or next(iter(fabricas))
+            if fabrica_item not in fabricas:
+                raise ValueError(f"Pedido {pedido}: fábrica do item difere do cabeçalho.")
+            qtd = self._converter_valor_br(item["quantidade"])
+            preco = self._converter_valor_br(item["preco_unitario"])
+            sku = self.normalizar_sku(item["sku"])
+            if not sku or qtd <= 0 or qtd != int(qtd) or preco < 0:
+                raise ValueError(f"Pedido {pedido}: SKU, quantidade inteira positiva ou preço inválido.")
+            grupos.setdefault((fabrica_item, pedido), []).append((sku, texto(item["nome_produto"]) or sku, int(qtd), preco))
+        return cabecalhos, grupos, ignorados
+
+    def conferir(self, df_cab, df_prod):
+        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod)
+        fabricas = {f.id: f.nome_fantasia.casefold() for f in self.db.query(Fabrica).all()}
+        numeros = {c[1] for c in cabecalhos}
+        existentes = {(fabricas[v.fabrica_id], v.numero_pedido): v for v in
+                      self.db.query(Venda).filter(Venda.numero_pedido.in_(numeros)).all()}
+        itens_anteriores = {}
+        ids = [v.id for v in existentes.values()]
+        for item in self.db.query(ItemVenda).filter(ItemVenda.venda_id.in_(ids)).order_by(ItemVenda.id):
+            itens_anteriores.setdefault(item.venda_id, []).append(item)
+        registros, estado = [], []
+        atualizados = sem_itens = total_itens = 0
+        por_fabrica = {}
+        for row, pedido, fabrica, _, data, valor in cabecalhos:
+            chave = (fabrica.casefold(), pedido)
+            venda = existentes.get(chave)
+            itens = grupos.get(chave, [])
+            atualizados += venda is not None
+            sem_itens += not itens
+            total_itens += len(itens)
+            por_fabrica[fabrica] = por_fabrica.get(fabrica, 0) + valor
             if venda:
-                if venda.cliente_id != cliente.id or venda.fabrica_id != fabrica.id:
-                    raise ErroImportacao(
-                        f"Pedido {num} já existe para outro cliente ou fábrica. A carga não substituirá sua identidade."
-                    )
-                existentes = Counter(
-                    (
-                        i.produto_id,
-                        i.quantidade,
-                        Decimal(i.preco_unitario),
-                        Decimal(i.subtotal),
-                    )
-                    for i in venda.itens
-                )
-                iguais = (
-                    existentes == Counter(novos_itens)
-                    and venda.data_venda == p["data"]
-                    and venda.valor_total == p["total"]
-                    and venda.vendedor_id == (vendedor.id if vendedor else None)
-                )
-                if iguais:
-                    contagem["inalterados"] += 1
-                    continue
-                if not permitir_atualizacao:
-                    raise ErroImportacao(
-                        f"Pedido {num} já existe com dados diferentes. Marque a atualização de pedidos existentes após conferir a carga."
-                    )
-                if not {i[0] for i in existentes} <= {i[0] for i in novos_itens}:
-                    raise ErroImportacao(
-                        f"Pedido {num}: a nova carga removeria produtos existentes. Envie o pedido completo."
-                    )
-                venda.itens.clear()
-                self.db.flush()
-                contagem["atualizados"] += 1
-            else:
-                venda = Venda(
-                    numero_pedido=num, cliente_id=cliente.id, fabrica_id=fabrica.id
-                )
-                self.db.add(venda)
-<<<<<<< Updated upstream
-                self.db.flush()
-                vendas_existentes[num_pedido] = venda
+                anteriores = itens_anteriores.get(venda.id, [])
+                estado.append([venda.id, venda.cliente_id, venda.vendedor_id, str(venda.data_venda), venda.valor_total,
+                               [[i.id, i.produto_id, i.quantidade, i.preco_unitario] for i in anteriores]])
+            registros.append({"pedido": pedido, "fabrica": fabrica, "cliente": texto(row.get("cliente")),
+                              "data": data.isoformat(), "valor": valor, "itens": len(itens),
+                              "acao": "Atualizar" if venda else "Adicionar"})
+        from src.backend.app.models import Importacao
+        ultima = self.db.query(Importacao.id).order_by(Importacao.id.desc()).first()
+        import json
+        assinatura = hashlib.sha256(json.dumps([estado, ultima[0] if ultima else 0], sort_keys=True).encode()).hexdigest()
+        avisos = []
+        if ignorados:
+            avisos.append(f"{ignorados} linhas de itens sem pedido correspondente serão ignoradas. Confira o período dos arquivos.")
+        if sem_itens:
+            avisos.append(f"{sem_itens} pedidos sem itens nesta carga: entram no faturamento. Itens anteriormente importados serão conservados.")
+        if atualizados:
+            avisos.append("Pedidos existentes serão atualizados, sem duplicação. Quando houver itens na carga, eles substituirão os itens anteriores do pedido.")
+        if "tipo_pedido" not in df_cab:
+            avisos.append("O arquivo não informa o tipo do pedido. Confirme que contém somente vendas efetivadas que geram comissão.")
+        datas = [c[4] for c in cabecalhos]
+        return {"processados": len(cabecalhos), "adicionados": len(cabecalhos) - atualizados,
+                "atualizados": atualizados, "itens": total_itens, "pedidos_sem_itens": sem_itens,
+                "itens_ignorados": ignorados, "valor_total": round(sum(c[5] for c in cabecalhos), 2),
+                "inicio": min(datas).isoformat(), "fim": max(datas).isoformat(), "avisos": avisos,
+                "fabricas": [{"nome": f, "valor": round(v, 2)} for f, v in por_fabrica.items()],
+                "pedidos": registros[:100], "estado": assinatura}
 
-            if num_pedido in prod_agrupados.groups:
-                for _, item_row in prod_agrupados.get_group(num_pedido).iterrows():
-                    sku_item = self.normalizar_sku(item_row["sku"])
-                    prod_id = produtos_cache.get(sku_item)
-                    if prod_id:
-                        self.db.add(
-                            ItemVenda(
-                                venda_id=venda.id,
-                                produto_id=prod_id,
-                                quantidade=item_row["quantidade"],
-                                preco_unitario=item_row["preco_unitario"],
-                            )
-                        )
-
-        self.db.commit()
-        
-    @staticmethod
-    def sanitizar_valor_planilha(valor: object) -> object:
-        """Neutraliza tentativa de injeção de fórmulas de planilhas."""
-        if isinstance(valor, str):
-            val_limpo = valor.strip()
-            # Prefixos perigosos que iniciam comandos DDE ou fórmulas no Excel
-            if val_limpo.startswith(("=", "+", "-", "@", "\t", "\r")):
-                return f"'{val_limpo}"  # Aspas simples forçam o texto como literal puro
-            return val_limpo
-        return valor
-=======
-                contagem["adicionados"] += 1
-            venda.data_venda = p["data"]
-            venda.valor_total = p["total"]
-            venda.vendedor_id = vendedor.id if vendedor else None
-            self.db.flush()
-            for produto_id, qtd, preco, subtotal in novos_itens:
-                venda.itens.append(
-                    ItemVenda(
-                        produto_id=produto_id,
-                        quantidade=qtd,
-                        preco_unitario=preco,
-                        subtotal=subtotal,
-                    )
-                )
+    def _validar_e_salvar(self, df_cab, df_prod, commit=True):
+        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod)
+        if self.db.bind.dialect.name == "postgresql":
+            from sqlalchemy import text
+            if not self.db.execute(text("SELECT pg_try_advisory_xact_lock(20260929)")).scalar():
+                raise ValueError("Outra importação está em andamento. Aguarde a conclusão antes de enviar novamente.")
+        fabricas_cache = {f.nome_fantasia.casefold(): f for f in self.db.query(Fabrica).all()}
+        vendedores = {v.nome.casefold(): v for v in self.db.query(Vendedor).all()}
+        clientes = {c.cnpj_hash: c for c in self.db.query(Cliente).all() if c.cnpj_hash}
+        # Prepara cadastros em lote; não faz uma viagem ao banco por pedido.
+        for row, _, nome_fabrica, doc, _, _ in cabecalhos:
+            if nome_fabrica.casefold() not in fabricas_cache:
+                fabrica = Fabrica(nome_fantasia=nome_fabrica)
+                self.db.add(fabrica)
+                fabricas_cache[nome_fabrica.casefold()] = fabrica
+            vend_nome = texto(row.get("vendedor"))
+            if vend_nome and vend_nome.casefold() not in vendedores:
+                vendedor = Vendedor(nome=vend_nome)
+                self.db.add(vendedor)
+                vendedores[vend_nome.casefold()] = vendedor
+            doc_hash = gerar_blind_index(doc)
+            if doc_hash not in clientes:
+                cliente = Cliente(cnpj_cpf=doc, cnpj_hash=doc_hash, razao_social=texto(row.get("cliente")) or doc)
+                self.db.add(cliente)
+                clientes[doc_hash] = cliente
+            cliente = clientes[doc_hash]
+            cliente.razao_social = texto(row.get("cliente")) or cliente.razao_social
+            local_anterior = (cliente.cidade, cliente.estado)
+            for campo, origem in (("nome_fantasia", "nome_fantasia"), ("cidade", "cidade"),
+                                  ("estado", "estado"), ("cep", "cep"), ("grupo_economico", "rede")):
+                if texto(row.get(origem)):
+                    setattr(cliente, campo, texto(row.get(origem)))
+            if cliente.estado:
+                cliente.estado = cliente.estado.upper()
+            if cliente.cidade and cliente.estado and (not cliente.micro_regiao or local_anterior != (cliente.cidade, cliente.estado)):
+                from src.backend.app.services.ibge_service import IBGEService
+                cliente.micro_regiao = IBGEService.obter_regiao_imediata(cliente.cidade, cliente.estado)
         self.db.flush()
-        return dict(
-            status="sucesso",
-            mensagem=f"Carga validada: {len(pedidos)} pedidos, {contagem['itens']} itens.",
-            **contagem,
-        )
->>>>>>> Stashed changes
+        produtos = {(p.fabrica_id, p.sku): p for p in self.db.query(Produto).all()}
+        for (nome_fabrica, _), lista in grupos.items():
+            fid = fabricas_cache[nome_fabrica].id
+            for sku, nome, _, _ in lista:
+                if (fid, sku) not in produtos:
+                    produto = Produto(sku=sku, nome=nome, fabrica_id=fid)
+                    self.db.add(produto)
+                    produtos[(fid, sku)] = produto
+        self.db.flush()
+        numeros = {c[1] for c in cabecalhos}
+        vendas = {(v.fabrica_id, v.numero_pedido): v for v in self.db.query(Venda).filter(Venda.numero_pedido.in_(numeros)).all()}
+        adicionados = atualizados = sem_itens = 0
+        cargas = []
+        for row, pedido, nome_fabrica, doc, data, valor in cabecalhos:
+            fabrica = fabricas_cache[nome_fabrica.casefold()]
+            cliente = clientes[gerar_blind_index(doc)]
+            vendedor = vendedores.get(texto(row.get("vendedor")).casefold())
+            venda = vendas.get((fabrica.id, pedido))
+            if venda is None:
+                venda = Venda(numero_pedido=pedido, fabrica_id=fabrica.id)
+                self.db.add(venda)
+                vendas[(fabrica.id, pedido)] = venda
+                adicionados += 1
+            else:
+                atualizados += 1
+            venda.cliente_id, venda.data_venda, venda.valor_total = cliente.id, data, valor
+            venda.vendedor_id = vendedor.id if vendedor else None
+            lista = grupos.get((nome_fabrica.casefold(), pedido), [])
+            if lista:
+                cargas.append((venda, lista))
+            else:
+                sem_itens += 1
+        self.db.flush()
+        # Substitui somente pedidos com itens nesta carga; conserva os demais.
+        ids = [v.id for v, _ in cargas]
+        if ids:
+            self.db.query(ItemVenda).filter(ItemVenda.venda_id.in_(ids)).delete(synchronize_session=False)
+        itens_salvos = 0
+        for venda, lista in cargas:
+            for sku, _, quantidade, preco in lista:
+                self.db.add(ItemVenda(venda_id=venda.id, produto_id=produtos[(venda.fabrica_id, sku)].id,
+                                      quantidade=quantidade, preco_unitario=preco))
+                itens_salvos += 1
+        avisos = []
+        if ignorados:
+            avisos.append(f"{ignorados} linhas de itens sem cabeçalho correspondente não foram importadas. Confira os filtros dos relatórios.")
+        if sem_itens:
+            avisos.append(f"{sem_itens} pedidos sem itens na carga: mantidos no faturamento. As análises de mix utilizam somente itens conhecidos.")
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+        return {"mensagem": "Importação concluída.", "processados": len(cabecalhos),
+                "adicionados": adicionados, "atualizados": atualizados, "itens": itens_salvos,
+                "pedidos_sem_itens": sem_itens, "itens_ignorados": ignorados, "avisos": avisos}
+    @staticmethod
+    def sanitizar_valor_planilha(valor):
+        return texto(valor) if isinstance(valor, str) else valor

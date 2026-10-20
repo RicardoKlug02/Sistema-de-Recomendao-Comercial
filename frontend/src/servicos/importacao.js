@@ -1,27 +1,20 @@
-import { solicitarApi } from './api.js'
-export const tamanhoMaximo = 10 * 1024 * 1024
-
-export function validarArquivo(arquivo) {
-  if (!arquivo) return 'Selecione as duas planilhas para importar.'
-  if (!/\.(xls|xlsx)$/i.test(arquivo.name)) return 'Selecione uma planilha XLS ou XLSX.'
-  if (arquivo.size === 0) return 'O arquivo está vazio.'
-  if (arquivo.size > tamanhoMaximo) return 'Cada arquivo deve ter no máximo 10 MB.'
+import { solicitar } from './api'
+const tamanhoMaximo = 10 * 1024 * 1024
+function validarArquivo(arquivo) {
+  if (!arquivo) return 'Selecione as duas planilhas.'
+  if (!/\.(xls|xlsx)$/i.test(arquivo.name)) return 'Envie XLS ou XLSX.'
+  if (!arquivo.size || arquivo.size > tamanhoMaximo) return 'Cada arquivo deve ter entre 1 byte e 10 MB.'
   return ''
 }
-
-export async function importarArquivos(pedidos, itens, signal) {
-  const erro = validarArquivo(pedidos) || validarArquivo(itens)
+export async function importarArquivos(cabecalho, itens, token) {
+  const erro = validarArquivo(cabecalho) || validarArquivo(itens)
   if (erro) throw new Error(erro)
-  const formulario = new FormData()
-  formulario.append('arquivo_cabecalho', pedidos)
-  formulario.append('arquivo_itens', itens)
-  const resposta = await solicitarApi('/cargas/excel', {
-    method: 'POST',
-    body: formulario,
-    prazo: 180000,
-    signal,
-  })
-  if (resposta.status === 'erro')
-    throw new Error(resposta.mensagem || 'O servidor não conseguiu importar as planilhas.')
-  return resposta
+  const dados = new FormData()
+  dados.append('arquivo_cabecalho', cabecalho)
+  dados.append('arquivo_itens', itens)
+  if (token) {
+    dados.append('token_conferencia', token)
+    dados.append('vendas_comissao', 'true')
+  }
+  return solicitar(token ? '/cargas/excel' : '/cargas/conferir', { method: 'POST', body: dados, tempoLimite: 180000 })
 }

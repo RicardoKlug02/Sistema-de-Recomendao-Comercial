@@ -1,61 +1,58 @@
-from fastapi import FastAPI
-from src.backend.app.core.config import settings
-from src.backend.app.api.comercial import router as comercial_router
-from src.backend.app.api.usuarios import router as usuarios_router
+from pathlib import Path
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from src.backend.app.core.limites import LimiteUpload, LimiteAutenticacao
-
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from src.backend.app.core.config import settings
+from src.backend.app.core.database import get_db
 from src.backend.app.api.auth import router as auth_router
 from src.backend.app.api.cliente import router as cliente_router
 from src.backend.app.api.upload import router as upload_router
+from src.backend.app.api.comercial import router as comercial_router
+from src.backend.app.api.relatorios import router as relatorios_router
+from src.backend.app.api.analises import router as analises_router
+from src.backend.app.api.regras import router as regras_router
 
-app = FastAPI(
-    title="Sales Intelligence API",
-    version="1.0.0",
-    description="Motor de Inteligência Comercial B2B, Previsão de Recompra e Cross-Selling",
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
+app = FastAPI(title="Sales Intelligence API", version="1.1.0",
+              description="Indicadores, Cliente 360º e alertas de inteligência comercial")
+app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS,
+                   allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"],
+                   allow_headers=["Authorization", "Content-Type"])
+for router in (auth_router, cliente_router, upload_router, comercial_router, relatorios_router, analises_router, regras_router):
+    app.include_router(router, prefix="/api/v1")
 
-app.add_middleware(LimiteUpload)
-app.add_middleware(LimiteAutenticacao)
-
-# Configuração de CORS liberada para consumo do Frontend React
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(comercial_router, prefix="/api/v1")
-app.include_router(usuarios_router, prefix="/api/v1")
-
-# Inclusão dos Roteadores da API v1
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(cliente_router, prefix="/api/v1")
-app.include_router(upload_router, prefix="/api/v1")
+DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if settings.SERVE_FRONTEND and (DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
 
-@app.get("/", tags=["Healthcheck"])
-def read_root():
-    return {
-        "status": "online",
-        "sistema": "Sales Intelligence Backend",
-        "docs": "/docs",
-    }
+@app.get("/health", tags=["Healthcheck"])
+def health():
+    return {"status": "online", "sistema": "Sales Intelligence Backend"}
 
 
 @app.get("/health/ready", tags=["Healthcheck"])
-def pronto():
-    from sqlalchemy import text
-    from src.backend.app.core.database import engine
-    from fastapi import HTTPException
-
+def ready(db: Session = Depends(get_db)):
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1 FROM usuarios LIMIT 1"))
-        return {"status": "pronto"}
+        db.execute(text("SELECT 1"))
     except Exception:
-        raise HTTPException(503, "Banco indisponível ou migrações pendentes.")
+        raise HTTPException(503, "Banco de dados temporariamente indisponível.")
+    return {"status": "online", "banco": "conectado"}
+
+
+@app.get("/", include_in_schema=False)
+def inicio():
+    if settings.SERVE_FRONTEND and (DIST / "index.html").is_file():
+        return FileResponse(DIST / "index.html")
+    return {"status": "online", "sistema": "Sales Intelligence Backend", "docs": "/docs"}
+
+
+@app.get("/{arquivo}", include_in_schema=False)
+def publico(arquivo: str):
+    if settings.SERVE_FRONTEND and arquivo in ("favicon.svg", "icons.svg"):
+        caminho = DIST / arquivo
+        if caminho.is_file():
+            return FileResponse(caminho)
+    raise HTTPException(404, "Recurso não encontrado.")

@@ -1,56 +1,59 @@
 from pathlib import Path
-from pydantic import field_validator
+from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from cryptography.fernet import Fernet
+
+ENV_FILE_PATH = Path(__file__).resolve().parents[4] / ".env"
 
 
 class Settings(BaseSettings):
+    # App
     DEBUG: bool = False
     API_VERSION: str = "v1"
     BACKEND_URL: str = "http://localhost:8000"
-    FRONTEND_URL: str = "http://localhost:5173"
-    ADMIN_EMAIL: str = "admin@example.com"
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
-    DATABASE_URL: str
-    JWT_SECRET_KEY: str
-    CHAVE_SERIALIZER: str
-    BLIND_INDEX_SALT: str
-    SECRET_ENCRYPTION_KEY: str
+    ADMIN_EMAIL: str = "diretor@empresa.com"
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
+
+    # Banco de Dados
+    DATABASE_URL: str = ""
+    DATABASE_POOL_SIZE: int = 2
+    DATABASE_MAX_OVERFLOW: int = 1
+    DB_HOST: str = "localhost"
+    DB_PORT: str = "5432"
+    DB_NAME: str = "meubanco_tcc"
+    DB_USER: str = "postgres"
+    DB_PASSWORD: str = "postgres"
+
+    # Segurança
+    SECRET_KEY: str
+    JWT_SECRET_KEY: str = ""
+    CHAVE_SERIALIZER: str = ""
+    BLIND_INDEX_SALT: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
-<<<<<<< Updated upstream
     SECRET_ENCRYPTION_KEY: str
+    SERVE_FRONTEND: bool = True
+    MAX_UPLOAD_MB: int = 10
+    ADMIN_PASSWORD: str = ""
+    ADMIN_NAME: str = "Administrador"
+    MAIL_ENABLED: bool = False
 
     # SMTP FastMail
-    EMAIL_PROVEDOR: str = "smtp"
-    RESEND_API_KEY: str = ""
-=======
-    MAIL_ENABLED: bool = False
->>>>>>> Stashed changes
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
-    MAIL_FROM: str = "noreply@example.com"
+    MAIL_FROM: str = ""
     MAIL_PORT: int = 587
-    MAIL_SERVER: str = "localhost"
+    MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
-    MAIL_USE_CREDENTIALS: bool = True
 
-    @field_validator("JWT_SECRET_KEY", "CHAVE_SERIALIZER", "BLIND_INDEX_SALT")
-    @classmethod
-    def validar_segredo(cls, valor):
-        if len(valor) < 32 or valor.startswith(("sua_", "troque_")):
-            raise ValueError("Gere segredos próprios com scripts/configurar.py.")
-        return valor
-
-    @field_validator("SECRET_ENCRYPTION_KEY")
-    @classmethod
-    def validar_cifra(cls, valor):
-        Fernet(valor.encode())
-        return valor
-
+    # Configuração Pydantic V2
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).resolve().parents[4] / ".env",
+        env_file=ENV_FILE_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
     )

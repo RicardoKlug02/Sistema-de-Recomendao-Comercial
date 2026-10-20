@@ -3,6 +3,7 @@ import json
 from typing import Any, Dict, List
 import pandas as pd
 from sqlalchemy.orm import Session
+from dateutil.relativedelta import relativedelta
 
 from src.backend.app.models.cliente_analises import (
     AlertaComercial,
@@ -76,7 +77,7 @@ class AnalyticsCalculatorService:
             return
 
         # Agrupamento com Pandas para alta performance antes de salvar
-        agrupado = df.groupby(["ano_mes", "regiao_imediata", "vendedor_id", "fabrica_id"]).agg(
+        agrupado = df.groupby(["ano_mes", "regiao_imediata", "vendedor_id", "fabrica_id"], dropna=False).agg(
             total_vendas=("valor", "sum"),
             quantidade_pedidos=("valor", "count"),
         ).reset_index()
@@ -86,7 +87,7 @@ class AnalyticsCalculatorService:
             item = ResumoVendasGeral(
                 ano_mes=row["ano_mes"],
                 regiao_imediata=row["regiao_imediata"],
-                vendedor_id=row["vendedor_id"],
+                vendedor_id=int(row["vendedor_id"]) if pd.notna(row["vendedor_id"]) else None,
                 fabrica_id=row["fabrica_id"],
                 total_vendas=row["total_vendas"],
                 quantidade_pedidos=int(row["quantidade_pedidos"]),
@@ -99,7 +100,8 @@ class AnalyticsCalculatorService:
         """Gera o Raio-X completo 360º por cliente."""
         clientes = self.db.query(Cliente).all()
         hoje = date.today()
-        limite_6m = hoje - timedelta(days=180)
+        fim_periodo = hoje.replace(day=1)
+        limite_6m = fim_periodo - relativedelta(months=6)
         limite_1m_inicio = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1) # Mês anterior fechado
 
         for cliente in clientes:
@@ -111,10 +113,10 @@ class AnalyticsCalculatorService:
             itens = self.db.query(ItemVenda, Produto).join(Produto, ItemVenda.produto_id == Produto.id).filter(ItemVenda.venda_id.in_(venda_ids)).all()
 
             # Cálculo de Faturamento Último Mês vs Média 6 Meses
-            total_6m = sum(v.valor_total for v in vendas_cliente if v.data_venda and v.data_venda >= limite_6m)
+            total_6m = sum(v.valor_total for v in vendas_cliente if v.data_venda and limite_6m <= v.data_venda < fim_periodo)
             media_6m = total_6m / 6.0
 
-            venda_ult_mes = sum(v.valor_total for v in vendas_cliente if v.data_venda and v.data_venda >= limite_1m_inicio)
+            venda_ult_mes = sum(v.valor_total for v in vendas_cliente if v.data_venda and limite_1m_inicio <= v.data_venda < fim_periodo)
             crescimento = ((venda_ult_mes - media_6m) / media_6m * 100) if media_6m > 0 else 0.0
 
             # Top Fábricas do Cliente

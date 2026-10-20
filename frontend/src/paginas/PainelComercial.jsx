@@ -1,53 +1,89 @@
+import { MemoriaPaginas } from '../servicos/estadoPaginas'
 import { useEffect, useState } from 'react'
 import Importacao from './Importacao'
-import VisaoGeral from './VisaoGeral'
 import Clientes from './Clientes'
+import Alertas from './Alertas'
+import Usuarios from './Usuarios'
+import VisaoGeral from './VisaoGeral'
+import Relatorios from './Relatorios'
+import AnaliseSistema from './AnaliseSistema'
+import RegrasNegocio from './RegrasNegocio'
 import MenuLateral from '../componentes/MenuLateral'
-import DetalhesCliente from '../componentes/comercial/DetalhesCliente'
+import useDados from '../hooks/useDados'
+import { tituloDocumento, tituloSecao } from '../secoes'
+import { ehGestor } from '../servicos/autenticacao'
 import './PainelComercial.css'
+import './Operacao.css'
+import './Usabilidade.css'
 
-const titulos = { painel: 'Visão geral', clientes: 'Clientes', importacoes: 'Importação' }
-
-// Após importar, as consultas abertas são invalidadas e recarregadas da API.
 export default function PainelComercial({ usuario, aoSair }) {
-  const [secaoAtiva, definirSecaoAtiva] = useState('painel')
-  const [clienteSelecionado, definirClienteSelecionado] = useState(null)
+  const [secao, definirSecao] = useState('painel')
+  const [clienteId, definirCliente] = useState(null)
+  const [memoria] = useState(() => new Map())
+  const [retorno, definirRetorno] = useState(null)
   const [versao, definirVersao] = useState(0)
-  const identificadorTitulo = secaoAtiva === 'importacoes' ? 'titulo-importacao' : `titulo-${secaoAtiva}`
-  useEffect(() => {
-    document.title = `${titulos[secaoAtiva]} | Rio Verde Representações`
-    document.getElementById(identificadorTitulo)?.focus({ preventScroll: true })
-    window.scrollTo({ top: 0 })
-  }, [secaoAtiva, identificadorTitulo])
-  function atualizar() {
-    definirVersao((anterior) => anterior + 1)
+  const cadastroVendedores = useDados('/comercial/vendedores', versao)
+  const vendedores = cadastroVendedores.dados || []
+  const cadastroFabricas = useDados('/comercial/fabricas', versao)
+  const fabricas = cadastroFabricas.dados || []
+  const cadastros = { vendedores, fabricas }
+  const atualizar = () => definirVersao((v) => v + 1)
+  const gestor = ehGestor(usuario)
+
+  function abrirCliente(id, contexto = {}) {
+    definirRetorno({ secao, fabrica: contexto.fabrica ?? '' })
+    definirCliente(id)
+    definirSecao('clientes')
   }
-  const propriedades = { versao, aoAtualizar: atualizar, aoAbrirCliente: definirClienteSelecionado }
+  function navegar(destino) {
+    definirRetorno(null)
+    if (destino === 'clientes') definirCliente(null)
+    definirSecao(destino)
+  }
+
+  useEffect(() => {
+    document.title = tituloDocumento(tituloSecao(secao))
+  }, [secao])
+
   return (
-    <div className="estrutura-painel">
-      <a className="atalho-conteudo" href={`#${identificadorTitulo}`}>
+    <MemoriaPaginas.Provider value={memoria}><div className="estrutura-painel">
+      <a
+        className="atalho-conteudo"
+        href="#titulo-pagina"
+        onClick={(e) => {
+          e.preventDefault()
+          document.getElementById('titulo-pagina')?.focus()
+        }}
+      >
         Pular para o conteúdo
       </a>
-      <MenuLateral usuario={usuario} aoSair={aoSair} secaoAtiva={secaoAtiva} aoNavegar={definirSecaoAtiva} />
+      <MenuLateral usuario={usuario} aoSair={aoSair} secaoAtiva={secao} aoNavegar={navegar} />
       <div className="barra-superior">
         <span>
-          Seu espaço comercial <span aria-hidden="true">/</span> <strong>{titulos[secaoAtiva]}</strong>
+          Rio Verde <span>/</span> {tituloSecao(secao)}
         </span>
-        <span className="estado-sistema">Carteira comercial</span>
+        <span>{new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</span>
       </div>
-      {secaoAtiva === 'painel' && (
-        <VisaoGeral {...propriedades} aoVerClientes={() => definirSecaoAtiva('clientes')} />
-      )}
-      {secaoAtiva === 'clientes' && <Clientes {...propriedades} />}
-      <Importacao usuario={usuario} ativa={secaoAtiva === 'importacoes'} aoImportar={atualizar} />
-      {clienteSelecionado && (
-        <DetalhesCliente
-          key={clienteSelecionado.id}
-          cliente={clienteSelecionado}
+      {(cadastroVendedores.erro || cadastroFabricas.erro) && <aside className="aviso-catalogos" role="alert"><p>Não foi possível carregar os vendedores ou fábricas.</p><button className="botao-secundario" onClick={() => { cadastroVendedores.tentarNovamente(); cadastroFabricas.tentarNovamente() }}>Tentar novamente</button></aside>}
+      {secao === 'painel' && (
+        <VisaoGeral
+          {...cadastros}
+          erroVendedores={cadastroVendedores.erro}
           versao={versao}
-          aoFechar={() => definirClienteSelecionado(null)}
+          aoAtualizar={atualizar}
+          aoAbrirCliente={abrirCliente}
+          aoAbrirAlertas={() => navegar('alertas')}
         />
       )}
-    </div>
+      {secao === 'clientes' && <Clientes key={clienteId || 'lista'} inicial={clienteId} fabricaInicial={retorno?.fabrica} origem={retorno?.secao}
+        aoVoltar={retorno ? () => { definirCliente(null); definirSecao(retorno.secao); definirRetorno(null) } : null}
+        fabricas={fabricas} />}
+      {secao === 'alertas' && <Alertas {...cadastros} aoAbrirCliente={abrirCliente} />}
+      {secao === 'relatorios' && <Relatorios {...cadastros} />}
+      {secao === 'analise' && <AnaliseSistema {...cadastros} />}
+      {secao === 'regras' && <RegrasNegocio {...cadastros} gestor={gestor} aoAlterar={atualizar} />}
+      {secao === 'importacoes' && gestor && <Importacao aoImportar={atualizar} />}
+      {secao === 'usuarios' && gestor && <Usuarios />}
+    </div></MemoriaPaginas.Provider>
   )
 }

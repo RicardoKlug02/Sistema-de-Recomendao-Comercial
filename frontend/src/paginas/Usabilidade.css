@@ -1,0 +1,68 @@
+/* Ajustes de leitura preservam a identidade visual existente. */
+.estrutura-painel { font-size: 15px; line-height: 1.55; }
+.estrutura-painel .conteudo-painel p,
+.estrutura-painel .conteudo-painel li,
+.estrutura-painel .conteudo-painel td,
+.estrutura-painel .conteudo-painel th { font-size: 14px; line-height: 1.6; }
+.estrutura-painel .conteudo-painel .nota-painel,
+.estrutura-painel .conteudo-painel small,
+.estrutura-painel .detalhe-indicador { font-size: 13px; }
+.estrutura-painel .etiqueta,
+.estrutura-painel .sobretitulo,
+.estrutura-painel .total-resultados,
+.estrutura-painel .menu-lateral a,
+.estrutura-painel .menu-lateral button { font-size: 13px; }
+.estrutura-painel .conteudo-painel label { font-size: 14px; color: #405448; }
+.estrutura-painel .conteudo-painel input,
+.estrutura-painel .conteudo-painel select,
+.estrutura-painel .conteudo-painel textarea,
+.estrutura-painel .conteudo-painel button { font-size: 14px; }
+.estrutura-painel .conteudo-painel button,
+.estrutura-painel .conteudo-painel select,
+.estrutura-painel .conteudo-painel input:not([type='checkbox']) { min-height: 44px; }
+.estrutura-painel .conteudo-painel input[type='checkbox'] { width: 18px; height: 18px; flex-shrink: 0; }
+.estrutura-painel .cabecalho-cartao h2 { font-size: 18px; }
+.estrutura-painel .cartao-indicador h2 { font-size: 14px; }
+.estrutura-painel .coluna-mensal,
+.estrutura-painel .legenda-grafico { font-size: 12px; }
+.estrutura-painel .etiqueta { white-space: normal; }
+.estrutura-painel .rolagem-tabela { overflow-x: auto; }
+.estrutura-painel .rolagem-tabela th,
+.estrutura-painel .rolagem-tabela td { padding: 12px; vertical-align: top; }
+.estrutura-painel .rolagem-tabela thead th { background: #f1f5ef; }
+.estrutura-painel .valor-numerico { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.estrutura-painel summary { cursor: pointer; font-size: 14px; padding: 10px 0; font-weight: 600; }
+.estrutura-painel .grade-resumos li + li { margin-top: 16px; }
+.estrutura-painel .resumo-alerta { color: #405448; font-weight: 600; }
+.historico-disponivel { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-bottom: 24px; padding: 16px; background: #edf3e9; border: 1px solid #d5e1cf; border-radius: 10px; font-size: 14px; }
+.historico-disponivel details { flex-basis: 100%; }
+.aviso-catalogos { margin: 20px 30px 20px 268px; padding: 16px; border: 1px solid #b24a3c; background: #fff; }
+.acompanhamento-alerta { margin-top: 18px; border-top: 1px solid var(--borda); padding-top: 10px; }
+.acompanhamento-alerta fieldset { display: grid; gap: 14px; padding: 0; margin: 0; border: 0; min-width: 0; }
+.acompanhamento-alerta label { display: grid; gap: 6px; }
+.acompanhamento-alerta textarea { min-height: 80px; resize: vertical; }
+.acompanhamento-alerta select,
+.acompanhamento-alerta textarea,
+.acompanhamento-alerta input { width: 100%; max-width: 100%; padding: 10px; border: 1px solid #bccbb9; border-radius: 6px; }
+.estrutura-painel :is(button, select, textarea, summary):focus-visible { outline: 3px solid #397359; outline-offset: 3px; }
+.estrutura-painel .confirmacao-carga { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #bdcdb7; border-radius: 8px; background: #f5f8f1; }
+.estrutura-painel .confirmacao-carga input[type='checkbox'] { width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; flex: 0 0 24px; }
+.estrutura-painel .confirmacao-carga label { display: flex; align-items: center; min-height: 44px; flex: 1; cursor: pointer; }
+.estrutura-painel .formulario-carga > *,
+.estrutura-painel .formulario-carga section { min-width: 0; max-width: 100%; }
+.estrutura-painel .formulario-carga .rolagem-tabela { width: 100%; min-width: 0; overflow-x: auto; }
+@media (max-width: 700px) {
+  .aviso-catalogos { margin: 16px; }
+  .estrutura-painel .filtros-comerciais label { min-width: 0; flex: 1 1 100%; }
+  .historico-disponivel { display: grid; }
+  .estrutura-painel .grade-cartoes,
+  .estrutura-painel .grade-resumos { grid-template-columns: minmax(0, 1fr); }
+  .estrutura-painel .tabela-fabricas { min-width: 0; }
+  .estrutura-painel .tabela-fabricas thead { display: none; }
+  .estrutura-painel .tabela-fabricas tbody { display: grid; }
+  .estrutura-painel .tabela-fabricas tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .estrutura-painel .tabela-fabricas th { grid-column: 1 / -1; background: #f1f5ef; }
+  .estrutura-painel .tabela-fabricas td { text-align: left; overflow-wrap: anywhere; }
+  .estrutura-painel .tabela-fabricas td::before { content: attr(data-rotulo); display: block; font-weight: 600; font-size: 12px; color: #526b58; }
+  .estrutura-painel .tabela-fabricas td[data-rotulo='Ritmo de recompra'] { grid-column: 1 / -1; }
+}
