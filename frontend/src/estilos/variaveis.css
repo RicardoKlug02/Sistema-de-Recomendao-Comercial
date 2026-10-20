@@ -1,0 +1,16 @@
+/* Cores reutilizadas em mais de um lugar. Para mudar uma cor do sistema, altere aqui. */
+:root {
+  --verde: #397359;
+  --verde-suave: #eaf1e7;
+  --verde-claro: #edf3e7;
+  --borda: #e2e7e1;
+  --borda-verde: #d3dfc9;
+  --secundaria: #6c786f;
+  --texto-rotulo: #405448;
+  --foco: #648c50;
+  --campo-borda: #dce3d6;
+  --campo-fundo: #fcfdfb;
+  --cabecalho-tabela: #f1f5ef;
+  --grafico-barra: #c6d6b5;
+  --grafico-destaque: #7c9d68;
+}

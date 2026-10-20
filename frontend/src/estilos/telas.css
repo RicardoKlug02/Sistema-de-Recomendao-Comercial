@@ -1,0 +1,299 @@
+/* Regras específicas de uma tela. */
+
+/* Visão geral */
+.historico-disponivel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #edf3e9;
+  border: 1px solid #d5e1cf;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.historico-disponivel details {
+  flex-basis: 100%;
+}
+.conteudo-painel .cartao > p {
+  overflow-wrap: anywhere;
+}
+
+/* Clientes e ficha do cliente */
+.voltar-clientes {
+  display: block;
+  margin-bottom: 24px;
+}
+.hero-cliente {
+  padding: 26px;
+  border: 1px solid #dbe5d5;
+  border-radius: 13px;
+  background: #eaf0e6;
+  margin: 22px 0;
+}
+.hero-cliente h2 {
+  font-size: 28px;
+  font-weight: 500;
+  margin: 14px 0;
+  letter-spacing: -0.7px;
+}
+.hero-cliente p {
+  color: #63725e;
+  margin-bottom: 0;
+}
+.ficha-cliente {
+  margin-top: 10px;
+}
+.ficha-cliente > .cartao {
+  margin-bottom: 22px;
+}
+.ficha-cliente ul {
+  padding-left: 20px;
+}
+.ficha-cliente li {
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+/* Alertas */
+.resumo-alerta {
+  color: var(--texto-rotulo);
+  font-weight: 600;
+}
+.alertas-agrupados {
+  margin-bottom: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.alertas-agrupados summary {
+  cursor: pointer;
+  color: var(--verde);
+  padding: 10px 0;
+}
+.alertas-agrupados ul {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-left: 20px;
+}
+.alertas-agrupados li {
+  margin-bottom: 16px;
+}
+.acompanhamento-alerta {
+  margin-top: 18px;
+  border-top: 1px solid var(--borda);
+  padding-top: 10px;
+}
+.acompanhamento-alerta fieldset {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.acompanhamento-alerta label {
+  display: grid;
+  gap: 6px;
+}
+.acompanhamento-alerta textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.acompanhamento-alerta select,
+.acompanhamento-alerta textarea,
+.acompanhamento-alerta input {
+  width: 100%;
+  max-width: 100%;
+  padding: 10px;
+  border: 1px solid #bccbb9;
+  border-radius: 6px;
+}
+
+/* Regras de negócio */
+.campos-regra {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.campos-regra textarea {
+  display: block;
+  width: 100%;
+  min-height: 70px;
+  margin: 8px 0 14px;
+  padding: 10px;
+  border: 1px solid #d9e1d2;
+  border-radius: 8px;
+  font: inherit;
+}
+.campos-regra > label,
+.campos-regra section > label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0;
+  max-width: 520px;
+}
+.campos-regra select {
+  min-height: 42px;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e0e5dc;
+  border-radius: 8px;
+  color: #293b27;
+  background: #fbfcf9;
+  font: inherit;
+}
+.campos-regra .opcao-rede {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 8px 4px 0;
+}
+.campos-regra input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+}
+.campos-regra section {
+  margin: 22px 0;
+}
+.acoes-regras {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+/* Importação */
+.tela-importacao > .cartao + .cartao {
+  margin-top: 22px;
+}
+.tela-importacao button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tela-importacao [role='status'] > p {
+  font-size: 13px;
+  color: var(--secundaria);
+}
+.formulario-carga {
+  display: grid;
+  /* minmax(0, 1fr) deixa a tabela de conferência rolar em vez de alargar a página. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.formulario-carga > *,
+.formulario-carga section {
+  min-width: 0;
+  max-width: 100%;
+}
+.formulario-carga label {
+  display: grid;
+  gap: 8px;
+}
+.formulario-carga label:has(input[type='file']) {
+  background: #f7f9f3;
+  border: 1px dashed #bacdb0;
+  border-radius: 11px;
+  padding: 24px;
+  font-size: 13px;
+}
+.formulario-carga input {
+  display: block;
+  max-width: 100%;
+}
+.formulario-carga input[type='file']::file-selector-button {
+  border: 1px solid var(--borda-verde);
+  border-radius: 7px;
+  padding: 10px 13px;
+  margin-right: 12px;
+  background: white;
+  color: #456638;
+  cursor: pointer;
+}
+.formulario-carga .confirmacao-carga {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #bdcdb7;
+  border-radius: 8px;
+  background: #f5f8f1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: inherit;
+}
+.formulario-carga .confirmacao-carga input[type='checkbox'] {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin: 0;
+  padding: 0;
+}
+.formulario-carga .confirmacao-carga label {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  flex: 1;
+  cursor: pointer;
+}
+.formulario-carga .botao-principal {
+  width: fit-content;
+}
+.formulario-carga .rolagem-tabela {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .historico-disponivel {
+    display: grid;
+  }
+  .formulario-carga label:has(input[type='file']) {
+    padding: 16px;
+  }
+  /* Na ficha, a tabela de fábricas vira cartões com o rótulo de cada coluna. */
+  .estrutura-painel .tabela-fabricas {
+    min-width: 0;
+  }
+  .estrutura-painel .tabela-fabricas thead {
+    display: none;
+  }
+  .estrutura-painel .tabela-fabricas tbody {
+    display: grid;
+  }
+  .estrutura-painel .tabela-fabricas tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .estrutura-painel .tabela-fabricas th {
+    grid-column: 1 / -1;
+    background: var(--cabecalho-tabela);
+  }
+  .estrutura-painel .tabela-fabricas td {
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .estrutura-painel .tabela-fabricas td::before {
+    content: attr(data-rotulo);
+    display: block;
+    font-weight: 600;
+    font-size: 12px;
+    color: #526b58;
+  }
+  .estrutura-painel .tabela-fabricas td[data-rotulo='Ritmo de recompra'] {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 640px) {
+  .tela-importacao .botao-secundario,
+  .tela-importacao .botao-detalhes {
+    min-height: 44px;
+  }
+}

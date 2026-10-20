@@ -12,9 +12,6 @@ import MenuLateral from '../componentes/MenuLateral'
 import useDados from '../hooks/useDados'
 import { tituloDocumento, tituloSecao } from '../secoes'
 import { ehGestor } from '../servicos/autenticacao'
-import './PainelComercial.css'
-import './Operacao.css'
-import './Usabilidade.css'
 
 export default function PainelComercial({ usuario, aoSair }) {
   const [secao, definirSecao] = useState('painel')

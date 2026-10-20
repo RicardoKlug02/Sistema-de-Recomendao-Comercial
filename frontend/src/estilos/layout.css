@@ -1,0 +1,308 @@
+/* Estrutura do sistema após o login: menu lateral, barra superior e área de conteúdo. */
+.estrutura-painel {
+  min-height: 100svh;
+  background: #f6f7f4;
+  color: #293d32;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* Menu lateral */
+.menu-lateral {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 3;
+  width: 238px;
+  padding: 30px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-right: 1px solid var(--borda);
+  overflow-y: auto;
+}
+.marca {
+  display: block;
+  margin: 0 14px 40px;
+}
+.legenda-menu {
+  margin: 0 14px 16px;
+  color: #798278;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.7px;
+}
+.menu-lateral nav {
+  display: grid;
+  gap: 6px;
+}
+.menu-lateral a,
+.menu-lateral button {
+  font-size: 13px;
+}
+.menu-lateral nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 13px;
+  border-radius: 9px;
+  color: #657268;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.menu-lateral nav a:hover {
+  background: #f3f6f0;
+}
+.menu-lateral nav a[aria-current] {
+  color: #36644c;
+  background: var(--verde-suave);
+  font-weight: 600;
+}
+.rodape-menu {
+  padding-top: 18px;
+}
+.perfil {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--borda);
+  padding: 20px 0 14px;
+}
+.avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #edf1e5;
+  color: #637957;
+  font-size: 12px;
+}
+.perfil div {
+  min-width: 0;
+}
+.perfil strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.perfil small {
+  display: block;
+  color: var(--secundaria);
+  margin-top: 4px;
+  font-size: 10px;
+}
+.botao-sair {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 6px;
+  color: #68766c;
+  background: transparent;
+}
+.botao-sair:hover {
+  background: #f1f5ed;
+}
+
+/* Barra superior e área de conteúdo */
+.barra-superior {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-left: 238px;
+  padding: 20px 36px;
+  border-bottom: 1px solid var(--borda);
+  background: #ffffffc9;
+  font-size: 11px;
+  color: var(--secundaria);
+}
+.barra-superior > span > span {
+  margin: 0 10px;
+  color: #adb5ac;
+}
+.conteudo-painel {
+  max-width: 1840px;
+  margin-left: 238px;
+  padding: 34px 36px 28px;
+}
+.aviso-catalogos {
+  margin: 20px 30px 20px 268px;
+  padding: 16px;
+  border: 1px solid #b24a3c;
+  background: #fff;
+}
+.cabecalho-painel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+.sobretitulo {
+  margin: 0 0 10px;
+  color: #728669;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.7px;
+}
+.cabecalho-painel h1 {
+  margin: 0 0 10px;
+  font-size: clamp(25px, 2.4vw, 34px);
+  font-weight: 500;
+  letter-spacing: -1.1px;
+}
+.cabecalho-painel h1 + p {
+  margin: 0;
+  color: var(--secundaria);
+}
+.acoes-cabecalho {
+  flex-shrink: 0;
+}
+
+/* Tipografia e campos da área de conteúdo */
+.estrutura-painel .conteudo-painel p,
+.estrutura-painel .conteudo-painel li,
+.estrutura-painel .conteudo-painel td,
+.estrutura-painel .conteudo-painel th {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.estrutura-painel .conteudo-painel .nota-painel,
+.estrutura-painel .conteudo-painel small,
+.estrutura-painel .detalhe-indicador {
+  font-size: 13px;
+}
+.estrutura-painel .conteudo-painel label {
+  font-size: 14px;
+  color: var(--texto-rotulo);
+}
+.estrutura-painel .conteudo-painel input,
+.estrutura-painel .conteudo-painel select,
+.estrutura-painel .conteudo-painel textarea,
+.estrutura-painel .conteudo-painel button {
+  font-size: 14px;
+}
+.estrutura-painel .conteudo-painel button,
+.estrutura-painel .conteudo-painel select,
+.estrutura-painel .conteudo-painel input:not([type='checkbox']) {
+  min-height: 44px;
+}
+.estrutura-painel .conteudo-painel input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.estrutura-painel summary {
+  cursor: pointer;
+  font-size: 14px;
+  padding: 10px 0;
+  font-weight: 600;
+}
+
+/* Acessibilidade: atalho para o conteúdo e foco visível pelo teclado */
+.atalho-conteudo {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 10;
+  padding: 12px;
+  background: white;
+  color: #23362e;
+}
+.atalho-conteudo:focus {
+  top: 12px;
+}
+.estrutura-painel :focus-visible {
+  outline: 2px solid var(--foco);
+  outline-offset: 4px;
+}
+.estrutura-painel :is(button, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--verde);
+  outline-offset: 3px;
+}
+
+@media (max-width: 1200px) {
+  .conteudo-painel {
+    padding: 28px 24px;
+  }
+}
+@media (max-width: 1000px) {
+  .menu-lateral {
+    width: 210px;
+    padding-inline: 15px;
+  }
+  .conteudo-painel,
+  .barra-superior {
+    margin-left: 210px;
+  }
+  .cabecalho-painel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 700px) {
+  .menu-lateral {
+    position: relative;
+    width: 100%;
+    padding: 18px 16px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--borda);
+    overflow: visible;
+  }
+  .marca {
+    width: 145px;
+    margin: 0 0 20px;
+  }
+  .legenda-menu,
+  .perfil {
+    display: none;
+  }
+  .rodape-menu {
+    position: absolute;
+    right: 12px;
+    top: 26px;
+    padding: 0;
+  }
+  .botao-sair {
+    width: auto;
+    gap: 14px;
+  }
+  .menu-lateral nav {
+    display: flex;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    gap: 5px;
+  }
+  .menu-lateral nav a {
+    flex: 0 0 auto;
+    padding: 10px 13px;
+    min-height: 44px;
+  }
+  .barra-superior {
+    margin: 0;
+    padding: 15px 18px;
+    font-size: 10px;
+  }
+  .barra-superior > span:last-child {
+    text-align: right;
+  }
+  .conteudo-painel {
+    margin: 0;
+    padding: 26px 18px;
+  }
+  .aviso-catalogos {
+    margin: 16px;
+  }
+  .cabecalho-painel {
+    gap: 14px;
+  }
+  .cabecalho-painel h1 {
+    font-size: 28px;
+  }
+}
