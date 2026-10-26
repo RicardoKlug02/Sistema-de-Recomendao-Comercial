@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 // As chamadas de API são interceptadas nos testes: nenhum cadastro ou upload chega à produção.
 export default defineConfig({
-  testDir: './tests',
+  testDir: './testes/e2e',
   fullyParallel: false,
   workers: 1,
   use: {

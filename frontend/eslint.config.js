@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist', 'test-results', 'playwright-report']),
   {
-    files: ['playwright.config.js', 'tests/**/*.js'],
+    files: ['playwright.config.js', 'testes/**/*.js'],
     languageOptions: { globals: globals.node },
   },
   {

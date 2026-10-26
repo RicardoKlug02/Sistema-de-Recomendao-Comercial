@@ -3,7 +3,7 @@ const numero = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 })
 
 export const formatarMoeda = (valor) => moeda.format(Number(valor || 0))
 export const formatarNumero = (valor) => numero.format(valor)
-export const formatarData = (iso) => (iso ? iso.split('-').reverse().join('/') : 'â€”')
+export const formatarData = (iso) => (iso ? iso.split('-').reverse().join('/') : '—')
 
 export function dataLocal(data = new Date()) {
   const mes = String(data.getMonth() + 1).padStart(2, '0')
@@ -17,8 +17,8 @@ export function diasAtras(dias) {
 }
 
 export function formatarDataHora(valor) {
-  if (!valor) return 'â€”'
+  if (!valor) return '—'
   const iso = /Z$|[+-]\d\d:\d\d$/.test(valor) ? valor : `${valor}Z`
   const data = new Date(iso)
-  return Number.isNaN(data.getTime()) ? 'â€”' : data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
+  return Number.isNaN(data.getTime()) ? '—' : data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
 }
