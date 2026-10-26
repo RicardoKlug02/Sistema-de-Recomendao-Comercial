@@ -16,7 +16,11 @@ Inicie a API na porta 8000. O proxy do Vite encaminha /api para localhost:8000. 
 ```sh
 npm run lint
 npm run build
+npm test
+npm run test:e2e
 ```
+
+`npm test` roda os testes de unidade (Vitest) em testes/unidade. `npm run test:e2e` roda os fluxos de interface (Playwright) em testes/e2e com a API interceptada; instale o navegador com `npx playwright install chromium` ou use o Chrome local com `PLAYWRIGHT_CHANNEL=chrome`.
 
 O backend serve frontend/dist quando SERVE_FRONTEND=true. O Dockerfile na raiz realiza o build e publica interface e API juntas.
 
