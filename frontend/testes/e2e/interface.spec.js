@@ -359,3 +359,32 @@ test('ficha distingue fábricas com mesmo código e separa ciclo de inatividade'
   await expect(page.getByText('Ativa', { exact: true })).toBeVisible()
   await expect(page.getByText('Recompra atrasada há 7 dias', { exact: true })).toBeVisible()
 })
+
+test('ficha mostra mais produtos aos poucos e busca por código ou nome', async ({ page }) => {
+  await preparar(page)
+  const reposicao = Array.from({ length: 12 }, (_, i) => ({ produto_id: i + 1, fabrica: 'Fábrica Exemplo',
+    sku: String(3000 + i), nome: i === 11 ? 'Sabão em pó' : `Produto ${i + 1}`, status: 'Janela Ideal', volume_habitual: 4 }))
+  await page.route('**/api/v1/clientes/1?*', (route) => route.fulfill({ json: {
+    ...cliente, cliente_id: 1, clientes_agrupados: 1, cadastros_fiscais: [], valor_comprado: 100,
+    pedidos_emitidos: 3, ritmo_compras: null, comparacao_produtos: [], produtos_em_abandono: [],
+    produtos_sem_confirmacao: [], sugestoes_expansao_mix: [], sugestoes_fabricas: [], resumo_fabricas: [],
+    sugestoes_reposicao: reposicao,
+  } }))
+  await entrar(page)
+  await page.getByRole('link', { name: 'Clientes', exact: true }).click()
+  await page.getByRole('button', { name: 'Abrir ficha', exact: true }).click()
+  const cartao = page.getByRole('region', { name: 'Reposição de produtos' })
+  await expect(cartao.getByRole('listitem')).toHaveCount(5)
+  await cartao.getByRole('button', { name: 'Mostrar mais (7)' }).click()
+  await expect(cartao.getByRole('listitem')).toHaveCount(12)
+  await expect(cartao.getByRole('button', { name: /Mostrar mais/ })).toHaveCount(0)
+  await cartao.getByRole('button', { name: 'Mostrar menos' }).click()
+  await expect(cartao.getByRole('listitem')).toHaveCount(5)
+  await cartao.getByLabel('Buscar por código ou nome').fill('sabao')
+  await expect(cartao.getByRole('listitem')).toHaveCount(1)
+  await expect(cartao.getByText('Fábrica Exemplo · Código 3011')).toBeVisible()
+  await cartao.getByLabel('Buscar por código ou nome').fill('3003')
+  await expect(cartao.getByRole('listitem')).toHaveCount(1)
+  await cartao.getByLabel('Buscar por código ou nome').fill('inexistente')
+  await expect(cartao.getByText('Nenhum produto encontrado para “inexistente”.')).toBeVisible()
+})
