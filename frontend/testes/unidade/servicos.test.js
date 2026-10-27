@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { obterSessao } from '../../src/servicos/api'
 import { ehGestor, entrar, registrar, validarEmail } from '../../src/servicos/autenticacao'
+import { filtrarProdutos } from '../../src/servicos/busca'
 import { formatarData, formatarDataHora, formatarMoeda } from '../../src/servicos/formatacao'
 import { importarArquivos } from '../../src/servicos/importacao'
 
@@ -89,5 +90,22 @@ describe('formatação', () => {
     expect(formatarData(null)).toBe('—')
     expect(formatarDataHora('2026-08-01T15:00:00')).toBe('01/08/2026, 12:00')
     expect(formatarDataHora('inválida')).toBe('—')
+  })
+})
+
+describe('busca de produtos', () => {
+  const produtos = [
+    { produto_id: 1, sku: '1020', nome: 'Detergente Limão' },
+    { produto_id: 2, sku: 'AB-77', nome: 'Sabão em pó' },
+  ]
+  test('encontra por código ou nome, sem diferenciar acento e maiúscula', () => {
+    expect(filtrarProdutos(produtos, '102')).toEqual([produtos[0]])
+    expect(filtrarProdutos(produtos, 'ab-77')).toEqual([produtos[1]])
+    expect(filtrarProdutos(produtos, 'SABAO')).toEqual([produtos[1]])
+    expect(filtrarProdutos(produtos, 'limao')).toEqual([produtos[0]])
+  })
+  test('termo vazio devolve a lista inteira', () => {
+    expect(filtrarProdutos(produtos, '  ')).toBe(produtos)
+    expect(filtrarProdutos(produtos, 'inexistente')).toEqual([])
   })
 })

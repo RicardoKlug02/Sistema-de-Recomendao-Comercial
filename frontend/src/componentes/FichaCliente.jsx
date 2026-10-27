@@ -1,6 +1,7 @@
 import Cartao from './Cartao'
 import CartaoIndicador from './CartaoIndicador'
 import EstadoConsulta from './EstadoConsulta'
+import ListaProdutos from './ListaProdutos'
 import RitmoCompras from './RitmoCompras'
 import useDados from '../hooks/useDados'
 import { formatarMoeda } from '../servicos/formatacao'
@@ -35,9 +36,9 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                 />
               </div>
               <Cartao titulo="Cadastros fiscais do cliente">
-                <ul>{cliente.cadastros_fiscais?.map((c) => <li key={c.id}>
-                  {c.razao_social} · {c.cnpj_cpf || 'Documento não informado'}
-                  {rede && <button className="botao-texto" onClick={() => { aoConsultarCadastro(c.id) }}>Consultar este CNPJ</button>}
+                <ul className="lista-clientes">{cliente.cadastros_fiscais?.map((c) => <li key={c.id}>
+                  <span>{c.razao_social} · {c.cnpj_cpf || 'Documento não informado'}</span>
+                  {rede && <button type="button" className="botao-secundario" onClick={() => { aoConsultarCadastro(c.id) }}>Consultar este CNPJ</button>}
                 </li>)}</ul>
               </Cartao>
               <RitmoCompras
@@ -74,14 +75,12 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
               <div className="grade-resumos">
                 <Cartao titulo="Reposição de produtos">
                   {cliente.sugestoes_reposicao.length ? (
-                    <ul>
-                      {cliente.sugestoes_reposicao.map((p) => (
-                        <li key={p.produto_id}>
-                          <strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}: {p.status} · volume habitual{' '}
-                          {p.volume_habitual}
-                        </li>
-                      ))}
-                    </ul>
+                    <ListaProdutos produtos={cliente.sugestoes_reposicao} renderizarItem={(p) => (
+                      <li key={p.produto_id}>
+                        <strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}: {p.status} · volume habitual{' '}
+                        {p.volume_habitual}
+                      </li>
+                    )} />
                   ) : (
                     <p>Nenhuma reposição identificada neste momento.</p>
                   )}
@@ -89,16 +88,14 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                 <Cartao titulo="Produtos em abandono">
                   {cliente.produtos_sem_confirmacao?.length > 0 && <>
                     <p>Recompra não confirmada: existe pedido posterior sem itens. Estes produtos não são contados como abandono confirmado.</p>
-                    <ul>{cliente.produtos_sem_confirmacao.map((p) => <li key={p.produto_id}><strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}</li>)}</ul>
+                    <ListaProdutos produtos={cliente.produtos_sem_confirmacao} renderizarItem={(p) => <li key={p.produto_id}><strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}</li>} />
                   </>}
                   {cliente.produtos_em_abandono.length ? (
-                    <ul>
-                      {cliente.produtos_em_abandono.map((p) => (
-                        <li key={p.produto_id}>
-                          <strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}: {p.dias_parado} dias sem compra conhecida.
-                        </li>
-                      ))}
-                    </ul>
+                    <ListaProdutos produtos={cliente.produtos_em_abandono} renderizarItem={(p) => (
+                      <li key={p.produto_id}>
+                        <strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}: {p.dias_parado} dias sem compra conhecida.
+                      </li>
+                    )} />
                   ) : (
                     <p>Nenhum abandono identificado.</p>
                   )}

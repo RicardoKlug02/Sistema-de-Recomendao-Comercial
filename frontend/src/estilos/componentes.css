@@ -333,6 +333,7 @@
 }
 .lista-clientes li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -524,6 +525,34 @@
 }
 .estrutura-painel .erro-campo {
   margin-bottom: 14px;
+}
+.busca-lista {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.busca-lista label {
+  color: #64745b;
+  font-size: 11px;
+}
+.busca-lista input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--campo-borda);
+  border-radius: 7px;
+  background: var(--campo-fundo);
+  color: #2a3c2b;
+}
+.acoes-lista {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.acoes-lista:has(button) {
+  margin-top: 16px;
 }
 .filtros-comerciais {
   display: flex;
