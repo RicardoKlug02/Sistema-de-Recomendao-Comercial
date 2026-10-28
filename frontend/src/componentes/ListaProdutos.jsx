@@ -11,7 +11,7 @@ export default function ListaProdutos({ produtos, renderizarItem, inicial = 5, i
   return <>
     {produtos.length > inicial && <div className="busca-lista">
       <label htmlFor={id}>Buscar por código ou nome</label>
-      <input id={id} type="search" value={termo} placeholder="Ex.: 1020 ou detergente"
+      <input id={id} type="search" value={termo} placeholder="Ex.: 1020 ou tomada mec tronic"
         onChange={(e) => { definirTermo(e.target.value); definirLimite(inicial) }} />
     </div>}
     {encontrados.length
