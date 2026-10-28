@@ -6,12 +6,18 @@ function validarArquivo(arquivo) {
   if (!arquivo.size || arquivo.size > tamanhoMaximo) return 'Cada arquivo deve ter entre 1 byte e 10 MB.'
   return ''
 }
-export async function importarArquivos(cabecalho, itens, token) {
+export async function importarArquivos(cabecalho, itens, token, { modo = 'atualizar', mes = '' } = {}) {
   const erro = validarArquivo(cabecalho) || validarArquivo(itens)
   if (erro) throw new Error(erro)
+  if (modo === 'sincronizar_mes' && !/^\d{4}-\d{2}$/.test(mes)) throw new Error('Selecione o mês completo a sincronizar.')
   const dados = new FormData()
   dados.append('arquivo_cabecalho', cabecalho)
   dados.append('arquivo_itens', itens)
+  if (modo === 'sincronizar_mes') {
+    dados.append('modo', modo)
+    dados.append('mes', mes)
+    if (token) dados.append('confirmar_sincronizacao', 'true')
+  }
   if (token) {
     dados.append('token_conferencia', token)
     dados.append('vendas_comissao', 'true')

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import EstadoConsulta from '../componentes/EstadoConsulta'
 import Seletor from '../componentes/Seletor'
 import Cartao from '../componentes/Cartao'
+import ListaProdutos from '../componentes/ListaProdutos'
 import useDados from '../hooks/useDados'
 import { solicitar } from '../servicos/api'
 import { formatarMoeda } from '../servicos/formatacao'
@@ -45,8 +46,10 @@ export default function RelatorioRede({ fabricas }) {
       {!redes.carregando && redes.dados?.length === 0 && <p>Não há redes cadastradas. Preencha a coluna Rede de clientes na importação.</p>}
       {consulta.dados && <>
         <p>{consulta.dados.clientes} cadastros fiscais · {consulta.dados.total} {consulta.dados.total === 1 ? 'código encontrado' : 'códigos encontrados'}.</p>
-        <div className="rolagem-tabela"><table><thead><tr><th>Código</th><th>Produto</th><th>Fábrica</th><th>Último pedido</th><th>Último preço unitário</th><th>Pedido</th><th>Cliente da compra</th></tr></thead>
-          <tbody>{consulta.dados.produtos.map((p) => <tr key={p.produto_id}><td>{p.sku}</td><td>{p.nome}</td><td>{p.fabrica}</td><td>{p.ultima_compra.split('-').reverse().join('/')}</td><td className="valor-numerico">{formatarMoeda(p.ultimo_preco)}</td><td>{p.pedido}</td><td>{p.cliente}</td></tr>)}</tbody></table></div>
+        {consulta.dados.total > 0 && <ListaProdutos key={`${rede}:${fabrica}`} produtos={consulta.dados.produtos} inicial={20} incremento={20}
+          renderizarLista={(visiveis) => <div className="rolagem-tabela"><table aria-label="Códigos comprados pela rede"><thead><tr><th>Código</th><th>Produto</th><th>Fábrica</th><th>Último pedido</th><th>Último preço unitário</th><th>Pedido</th><th>Cliente da compra</th></tr></thead>
+          <tbody>{visiveis.map((p) => <tr key={p.produto_id}><td>{p.sku}</td><td>{p.nome}</td><td>{p.fabrica}</td><td>{p.ultima_compra.split('-').reverse().join('/')}</td><td className="valor-numerico">{formatarMoeda(p.ultimo_preco)}</td><td>{p.pedido}</td><td>{p.cliente}</td></tr>)}</tbody></table></div>} />}
+        <p className="nota-painel">A busca na lista filtra somente a exibição. O PDF inclui todos os códigos da rede e da fábrica selecionadas nos filtros acima.</p>
         {!consulta.dados.total && <p>Nenhum produto comprado com os filtros selecionados.</p>}
         <p className="nota-painel">{consulta.dados.pedidos_sem_itens} pedidos sem itens. Códigos e preços desses pedidos não estão disponíveis. O último preço pertence à última compra encontrada na rede, no histórico importado.</p>
       </>}

@@ -86,10 +86,13 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                   )}
                 </Cartao>
                 <Cartao titulo="Produtos em abandono">
-                  {cliente.produtos_sem_confirmacao?.length > 0 && <>
+                  {cliente.produtos_sem_confirmacao?.length > 0 && <section aria-label="Produtos com recompra não confirmada">
+                    <h3>Recompra não confirmada</h3>
                     <p>Recompra não confirmada: existe pedido posterior sem itens. Estes produtos não são contados como abandono confirmado.</p>
                     <ListaProdutos produtos={cliente.produtos_sem_confirmacao} renderizarItem={(p) => <li key={p.produto_id}><strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}</li>} />
-                  </>}
+                  </section>}
+                  <section aria-label="Produtos com abandono confirmado">
+                  <h3>Abandono confirmado</h3>
                   {cliente.produtos_em_abandono.length ? (
                     <ListaProdutos produtos={cliente.produtos_em_abandono} renderizarItem={(p) => (
                       <li key={p.produto_id}>
@@ -99,12 +102,12 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                   ) : (
                     <p>Nenhum abandono identificado.</p>
                   )}
+                  </section>
                 </Cartao>
                 <Cartao titulo="Completar o mix">
                   <details className="entenda-indicador"><summary>Entenda as recomendações</summary><p>As sugestões usam compras de redes com histórico semelhante e respeitam as regras comerciais. Afinidade é uma pontuação de ordenação, não uma probabilidade de venda. Confira o contexto comercial antes de oferecer.</p></details>
                   {cliente.sugestoes_expansao_mix.length ? (
-                    <ul>
-                      {cliente.sugestoes_expansao_mix.map((p) => (
+                    <ListaProdutos produtos={cliente.sugestoes_expansao_mix} renderizarItem={(p) => (
                         <li key={p.produto_id}>
                           <strong>{p.fabrica} · Código {p.sku}</strong><p>{p.nome}</p>
                           <p>
@@ -112,8 +115,7 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                             {p.volume_sugerido_unidades}
                           </p>
                         </li>
-                      ))}
-                    </ul>
+                      )} />
                   ) : (
                     <p>
                       Ainda não há histórico semelhante suficiente para sugerir

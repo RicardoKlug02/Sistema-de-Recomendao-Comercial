@@ -1,5 +1,14 @@
 import Cartao from './Cartao'
+import ListaProdutos from './ListaProdutos'
 import { formatarMoeda } from '../servicos/formatacao'
+import { correspondeVariacao } from '../servicos/busca'
+
+const variacoes = [
+  { id: 'queda', nome: 'Queda nas compras' },
+  { id: 'aumento', nome: 'Aumento nas compras' },
+  { id: 'estavel', nome: 'Sem variação' },
+  { id: 'sem_comparacao', nome: 'Sem comparação disponível' },
+]
 
 const numero = (v) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(v)
 const data = (v) => v.split('-').reverse().join('/')
@@ -24,10 +33,12 @@ export default function RitmoCompras({ ritmo, produtos }) {
     {!ritmo.historico_suficiente && <p>Para calcular a variação, é necessário histórico desde o início do período habitual e pelo menos dois pedidos nos 90 dias anteriores.</p>}
     <p>Valores positivos indicam aumento; negativos indicam redução. Esta comparação não gera alertas automáticos.</p>
     <h3>Quantidades por produto</h3>
-    {produtos.length ? <div className="rolagem-tabela"><table><thead><tr><th>Produto</th><th>Média habitual (un.)</th><th>Últimos 30 dias (un.)</th><th>Variação</th></tr></thead>
-      <tbody>{produtos.map((p) => <tr key={p.produto_id}><th>{p.fabrica} · Código {p.sku}<br /><span>{p.nome}</span></th>
+    {produtos.length ? <ListaProdutos produtos={produtos} inicial={10} incremento={10}
+      situacoes={variacoes} filtrarSituacao={correspondeVariacao} rotuloSituacao="Variação nas compras" todasSituacoes="Todas as variações"
+      renderizarLista={(visiveis) => <div className="rolagem-tabela"><table aria-label="Comparação de quantidades por produto"><thead><tr><th>Produto</th><th>Média habitual (un.)</th><th>Últimos 30 dias (un.)</th><th>Variação</th></tr></thead>
+      <tbody>{visiveis.map((p) => <tr key={p.produto_id}><th>{p.fabrica} · Código {p.sku}<br /><span>{p.nome}</span></th>
         <td className="valor-numerico">{p.status === 'ITENS_INCOMPLETOS' ? '—' : numero(p.media_habitual)}</td><td className="valor-numerico">{p.status === 'ITENS_INCOMPLETOS' ? '—' : numero(p.recente)}</td><td className="valor-numerico">{variacao(p)}</td></tr>)}</tbody>
-    </table></div> : <p>Sem histórico de itens nesses períodos para comparar quantidades.</p>}
+    </table></div>} /> : <p>Sem histórico de itens nesses períodos para comparar quantidades.</p>}
     <p>Pedidos sem itens entram no valor e no número de pedidos. Se houver pedidos sem itens de uma fábrica nos períodos comparados, as quantidades dos seus produtos não são comparadas.</p>
   </Cartao>
 }

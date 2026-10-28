@@ -304,3 +304,164 @@ def test_totalizador_do_relatorio_produtos_nao_vira_item(db_session, tmp_path):
     assert len(prod) == 1
     assert prod.iloc[0]["sku"] == "1024"
     assert prod.iloc[0]["quantidade"] == 10
+
+
+def test_reimportacao_reduz_quantidade_preco_e_total_sem_somar_ou_duplicar(db_session):
+    service = ExcelService(db_session)
+    service._validar_e_salvar(cabecalhos(), itens())
+    vid = db_session.query(Venda).filter_by(numero_pedido="1").one().id
+    novo = cabecalhos().iloc[[0]].assign(valor_total=21)
+    produtos = itens().assign(quantidade=3, preco_unitario=7)
+    previa = service.conferir(novo, produtos)
+    assert previa["quantidades_reduzidas"] == 1
+    service._validar_e_salvar(novo, produtos)
+    assert db_session.query(Venda).count() == 2  # Modo parcial preserva o pedido ausente.
+    venda = db_session.get(Venda, vid)
+    assert venda.valor_total == 21
+    assert [(i.quantidade, i.preco_unitario) for i in venda.itens] == [(3, 7)]
+
+
+def test_sincronizacao_exclui_ausentes_remove_itens_e_preserva_outros_meses(db_session):
+    service = ExcelService(db_session)
+    cab = pd.concat([cabecalhos(), cabecalhos().iloc[[0]].assign(pedido="julho", data="31/07/2026"),
+                     cabecalhos().iloc[[0]].assign(pedido="setembro", data="01/09/2026")], ignore_index=True)
+    produtos = pd.concat([itens(), itens().assign(sku="SKU-2"), itens().assign(pedido="2"),
+                          itens().assign(pedido="julho"), itens().assign(pedido="setembro")], ignore_index=True)
+    service._validar_e_salvar(cab, produtos)
+    novos = cabecalhos().iloc[[0]].assign(valor_total=20)
+    opcoes = {"modo": "sincronizar_mes", "mes": "2026-08"}
+    previa = service.conferir(novos, itens().assign(quantidade=2), **opcoes)
+    assert (previa["excluidos"], previa["itens_removidos"], previa["quantidades_reduzidas"]) == (1, 2, 1)
+    assert previa["pedidos_excluidos"][0]["pedido"] == "2"
+    assert db_session.query(Venda).count() == 4  # A conferência não grava nem exclui.
+    service._validar_e_salvar(novos, itens().assign(quantidade=2), **opcoes)
+    assert {v.numero_pedido for v in db_session.query(Venda)} == {"1", "julho", "setembro"}
+    assert db_session.query(ItemVenda).count() == 3
+    assert ComercialService(db_session).painel("2026-08")["indicadores"]["venda_total"] == 20
+    assert ComercialService(db_session).painel("2026-07")["indicadores"]["venda_total"] == 100
+    previa_repetida = service.conferir(novos, itens().assign(quantidade=2), **opcoes)
+    assert (previa_repetida["excluidos"], previa_repetida["itens_removidos"], previa_repetida["quantidades_reduzidas"]) == (0, 0, 0)
+
+
+def test_sincronizacao_limpa_itens_quando_todos_foram_removidos(db_session):
+    service = ExcelService(db_session)
+    service._validar_e_salvar(cabecalhos(), itens())
+    service._validar_e_salvar(cabecalhos(), itens().iloc[:0], modo="sincronizar_mes", mes="2026-08")
+    assert db_session.query(Venda).count() == 2
+    assert db_session.query(ItemVenda).count() == 0
+    assert ComercialService(db_session).painel("2026-08")["indicadores"]["pedidos_sem_itens"] == 2
+
+
+@pytest.mark.parametrize("modo,mes", [("sincronizar_mes", None), ("sincronizar_mes", "2026-13"),
+                                     ("sincronizar_mes", "9999-01"), ("atualizar", "2026-08"), ("invalido", None)])
+def test_sincronizacao_exige_escopo_valido_sem_gravar(db_session, modo, mes):
+    service = ExcelService(db_session)
+    service._validar_e_salvar(cabecalhos(), itens())
+    with pytest.raises(ValueError):
+        service._validar_e_salvar(cabecalhos(), itens(), modo=modo, mes=mes)
+    assert db_session.query(Venda).count() == 2
+    assert db_session.query(ItemVenda).one().quantidade == 10
+
+
+def test_sincronizacao_rejeita_datas_de_outro_mes_e_itens_orfaos(db_session):
+    service = ExcelService(db_session)
+    service._validar_e_salvar(cabecalhos(), itens())
+    with pytest.raises(ValueError, match="fora do mês"):
+        service._validar_e_salvar(cabecalhos(), itens(), modo="sincronizar_mes", mes="2026-07")
+    with pytest.raises(ValueError, match="cabeçalhos correspondentes"):
+        service._validar_e_salvar(cabecalhos(), itens().assign(pedido="999"), modo="sincronizar_mes", mes="2026-08")
+    assert db_session.query(Venda).count() == 2
+
+
+def test_api_sincronizacao_confirma_exclusoes_registra_historico_e_auditoria(client, token_admin, db_session):
+    from src.backend.app.models import Importacao
+    import json
+    ExcelService(db_session)._validar_e_salvar(cabecalhos(), pd.concat([itens(), itens().assign(pedido="2")]))
+    headers = {"Authorization": f"Bearer {token_admin}"}
+    arquivos = {"arquivo_cabecalho": ("mes.xlsx", xlsx(cabecalhos().iloc[[0]].assign(valor_total=20))),
+                "arquivo_itens": ("itens.xlsx", xlsx(itens().assign(quantidade=2)))}
+    escopo = {"modo": "sincronizar_mes", "mes": "2026-08"}
+    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos, data=escopo)
+    assert previa.status_code == 200, previa.text
+    assert previa.json()["excluidos"] == 1
+    assert db_session.query(Venda).count() == 2
+    dados = {**escopo, "token_conferencia": previa.json()["token_conferencia"], "vendas_comissao": "true"}
+    assert client.post("/api/v1/cargas/excel", headers=headers, files=arquivos, data=dados).status_code == 422
+    dados["confirmar_sincronizacao"] = "true"
+    # Não pode reaproveitar a conferência mensal como uma importação parcial.
+    alterados = {k: v for k, v in dados.items() if k not in ("modo", "mes")}
+    assert client.post("/api/v1/cargas/excel", headers=headers, files=arquivos, data=alterados).status_code == 409
+    resultado = client.post("/api/v1/cargas/excel", headers=headers, files=arquivos, data=dados)
+    assert resultado.status_code == 200, resultado.text
+    assert resultado.json()["excluidos"] == resultado.json()["quantidades_reduzidas"] == 1
+    assert db_session.query(Venda).count() == 1
+    historico = client.get("/api/v1/cargas/historico", headers=headers).json()[0]
+    assert historico["mes"] == "2026-08" and historico["itens_removidos"] == 1
+    audit = json.loads(db_session.query(Importacao).one().resumo_json)["pedidos_excluidos"][0]
+    assert audit["pedido"] == "2" and audit["valor_total"] == 200
+    assert audit["itens"][0]["quantidade"] == 10
+
+
+@pytest.mark.parametrize("alteracao", ["valor", "item", "novo"])
+def test_sincronizacao_invalida_conferencia_se_pedidos_a_excluir_mudaram(client, token_admin, db_session, alteracao):
+    ExcelService(db_session)._validar_e_salvar(cabecalhos(), itens().assign(pedido="2"))
+    headers = {"Authorization": f"Bearer {token_admin}"}
+    arquivos = {"arquivo_cabecalho": ("mes.xlsx", xlsx(cabecalhos().iloc[[0]])),
+                "arquivo_itens": ("itens.xlsx", xlsx(itens()))}
+    dados = {"modo": "sincronizar_mes", "mes": "2026-08"}
+    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos, data=dados)
+    assert previa.status_code == 200, previa.text
+    if alteracao == "valor":
+        db_session.query(Venda).filter_by(numero_pedido="2").one().valor_total = 250
+    elif alteracao == "item":
+        db_session.query(ItemVenda).one().quantidade = 4
+    else:
+        base = db_session.query(Venda).first()
+        db_session.add(Venda(numero_pedido="novo", fabrica_id=base.fabrica_id, cliente_id=base.cliente_id,
+                             data_venda=date(2026, 8, 31), valor_total=30))
+    db_session.commit()
+    res = client.post("/api/v1/cargas/excel", headers=headers, files=arquivos,
+                      data={**dados, "token_conferencia": previa.json()["token_conferencia"],
+                            "confirmar_sincronizacao": "true", "vendas_comissao": "true"})
+    assert res.status_code == 409
+    assert db_session.query(Venda).filter_by(numero_pedido="2").count() == 1
+
+
+def test_sincronizacao_permite_mes_vazio_com_cabecalho_e_preserva_demais_periodos(client, token_admin, db_session):
+    service = ExcelService(db_session)
+    service._validar_e_salvar(pd.concat([cabecalhos(), cabecalhos().iloc[[0]].assign(pedido="outro", data="01/09/2026")]), itens())
+    headers = {"Authorization": f"Bearer {token_admin}"}
+    arquivos = {"arquivo_cabecalho": ("vazio.xlsx", xlsx(cabecalhos().iloc[:0])),
+                "arquivo_itens": ("itens.xlsx", xlsx(itens().iloc[:0]))}
+    dados = {"modo": "sincronizar_mes", "mes": "2026-08"}
+    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos, data=dados)
+    assert previa.status_code == 200, previa.text
+    assert previa.json()["excluidos"] == 2 and previa.json()["processados"] == 0
+    res = client.post("/api/v1/cargas/excel", headers=headers, files=arquivos,
+                      data={**dados, "token_conferencia": previa.json()["token_conferencia"],
+                            "confirmar_sincronizacao": "true", "vendas_comissao": "true"})
+    assert res.status_code == 200, res.text
+    assert db_session.query(Venda).one().numero_pedido == "outro"
+
+
+def test_falha_ao_registrar_carga_desfaz_exclusoes_e_atualizacoes(client, token_admin, db_session, monkeypatch):
+    from src.backend.app.models import Importacao
+    ExcelService(db_session)._validar_e_salvar(cabecalhos(), itens())
+    headers = {"Authorization": f"Bearer {token_admin}"}
+    arquivos = {"arquivo_cabecalho": ("mes.xlsx", xlsx(cabecalhos().iloc[[0]].assign(valor_total=20))),
+                "arquivo_itens": ("itens.xlsx", xlsx(itens().assign(quantidade=2)))}
+    dados = {"modo": "sincronizar_mes", "mes": "2026-08"}
+    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos, data=dados)
+    original = db_session.add
+    def falhar(registro, *args, **kwargs):
+        if isinstance(registro, Importacao):
+            raise RuntimeError("Falha simulada de gravação")
+        return original(registro, *args, **kwargs)
+    monkeypatch.setattr(db_session, "add", falhar)
+    res = client.post("/api/v1/cargas/excel", headers=headers, files=arquivos,
+                      data={**dados, "token_conferencia": previa.json()["token_conferencia"],
+                            "confirmar_sincronizacao": "true", "vendas_comissao": "true"})
+    assert res.status_code == 500
+    assert db_session.query(Venda).count() == 2
+    assert db_session.query(ItemVenda).one().quantidade == 10
+    assert db_session.query(Venda).filter_by(numero_pedido="1").one().valor_total == 100
