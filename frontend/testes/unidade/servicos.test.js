@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { obterSessao } from '../../src/servicos/api'
-import { ehGestor, entrar, registrar, validarEmail } from '../../src/servicos/autenticacao'
+import { proximaAcao } from '../../src/servicos/alertas'
+import { ehGestor, entrar, registrar, validarEmail, validarFormulario } from '../../src/servicos/autenticacao'
 import { filtrarProdutos } from '../../src/servicos/busca'
-import { formatarData, formatarDataHora, formatarMoeda } from '../../src/servicos/formatacao'
-import { importarArquivos } from '../../src/servicos/importacao'
+import { comSinal, formatarData, formatarDataHora, formatarMoeda, formatarNumero, formatarValor, rotuloProduto } from '../../src/servicos/formatacao'
+import { conferirPlanilhas, confirmarImportacao } from '../../src/servicos/importacao'
+import { regraParaApi, regraVazia, situacaoRegra } from '../../src/servicos/regras'
 
 const responder = (dados, status = 200) =>
   new Response(JSON.stringify(dados), { status, headers: { 'Content-Type': 'application/json' } })
@@ -53,13 +55,22 @@ describe('autenticação', () => {
     expect(validarEmail('pessoa@exemplo.com')).toBe('')
     expect(ehGestor({ perfil: 'gestor' })).toBe(true)
     expect(ehGestor({ perfil: 'vendedor' })).toBe(false)
+    expect(ehGestor(null)).toBe(false)
+  })
+
+  test('valida login e cadastro', () => {
+    expect(validarFormulario({ email: 'pessoa@exemplo.com', senha: '' })).toBe('Informe a senha.')
+    expect(validarFormulario({ email: 'pessoa@exemplo.com', senha: '1' })).toBe('')
+    expect(validarFormulario({ cadastro: true, nome: 'P', email: 'pessoa@exemplo.com', senha: '123456' })).toMatch(/pelo menos 6/)
+    expect(validarFormulario({ cadastro: true, nome: 'Pessoa', email: 'pessoa@exemplo.com', senha: '12345' })).toMatch(/pelo menos 6/)
+    expect(validarFormulario({ cadastro: true, nome: 'Pessoa', email: 'pessoa@exemplo.com', senha: '123456' })).toBe('')
   })
 })
 
 describe('importação', () => {
   test('conferência envia as duas planilhas sem gravar', async () => {
     fetch.mockResolvedValue(responder({ token: 'conferencia' }))
-    await importarArquivos(planilha('pedidos.xls'), planilha('itens.xlsx'))
+    await conferirPlanilhas(planilha('pedidos.xls'), planilha('itens.xlsx'))
     const [url, opcoes] = fetch.mock.calls[0]
     expect(url).toMatch(/\/cargas\/conferir$/)
     expect([...opcoes.body.keys()]).toEqual(['arquivo_cabecalho', 'arquivo_itens'])
@@ -68,16 +79,17 @@ describe('importação', () => {
 
   test('confirmação envia o token da conferência', async () => {
     fetch.mockResolvedValue(responder({ mensagem: 'Importação concluída.' }))
-    await importarArquivos(planilha('pedidos.xls'), planilha('itens.xlsx'), 'conferencia')
+    await confirmarImportacao(planilha('pedidos.xls'), planilha('itens.xlsx'), 'conferencia')
     const [url, opcoes] = fetch.mock.calls[0]
     expect(url).toMatch(/\/cargas\/excel$/)
     expect(opcoes.body.get('token_conferencia')).toBe('conferencia')
+    expect(opcoes.body.get('vendas_comissao')).toBe('true')
   })
 
   test('arquivos inválidos são bloqueados antes do envio', async () => {
-    await expect(importarArquivos(null, planilha('itens.xlsx'))).rejects.toThrow('Selecione as duas planilhas.')
-    await expect(importarArquivos(planilha('pedidos.txt'), planilha('itens.xlsx'))).rejects.toThrow('XLS ou XLSX')
-    await expect(importarArquivos(planilha('pedidos.xls', ''), planilha('itens.xlsx'))).rejects.toThrow('10 MB')
+    await expect(conferirPlanilhas(null, planilha('itens.xlsx'))).rejects.toThrow('Selecione as duas planilhas.')
+    await expect(conferirPlanilhas(planilha('pedidos.txt'), planilha('itens.xlsx'))).rejects.toThrow('XLS ou XLSX')
+    await expect(confirmarImportacao(planilha('pedidos.xls', ''), planilha('itens.xlsx'), 'conferencia')).rejects.toThrow('10 MB')
     expect(fetch).not.toHaveBeenCalled()
   })
 })
@@ -90,6 +102,19 @@ describe('formatação', () => {
     expect(formatarData(null)).toBe('—')
     expect(formatarDataHora('2026-08-01T15:00:00')).toBe('01/08/2026, 12:00')
     expect(formatarDataHora('inválida')).toBe('—')
+    expect(formatarNumero(undefined)).toBe('—')
+  })
+
+  test('formata variações, células de relatório e produtos', () => {
+    expect(comSinal(1234.5)).toBe('+1.234,5')
+    expect(comSinal(-3)).toBe('-3')
+    expect(comSinal(0)).toBe('0')
+    expect(formatarValor(12.5, 'percentual')).toBe('+12,5%')
+    expect(formatarValor(null, 'percentual')).toBe('Sem base')
+    expect(formatarValor(null, 'moeda')).toBe('—')
+    expect(formatarValor('2026-08-01', 'data')).toBe('01/08/2026')
+    expect(formatarValor('texto')).toBe('texto')
+    expect(rotuloProduto({ fabrica: 'Fábrica', sku: '10' })).toBe('Fábrica · Código 10')
   })
 })
 
@@ -107,5 +132,28 @@ describe('busca de produtos', () => {
   test('termo vazio devolve a lista inteira', () => {
     expect(filtrarProdutos(produtos, '  ')).toBe(produtos)
     expect(filtrarProdutos(produtos, 'inexistente')).toEqual([])
+  })
+})
+
+describe('alertas', () => {
+  test('próxima ação prioriza retorno de inativos', () => {
+    expect(proximaAcao({ SEGUNDO_PEDIDO: 1, FABRICA_INATIVA: 1 })).toMatch(/retorno/)
+    expect(proximaAcao({ SEGUNDO_PEDIDO: 1 })).toMatch(/primeira compra/)
+    expect(proximaAcao(undefined)).toMatch(/próximo contato/)
+  })
+})
+
+describe('regras de negócio', () => {
+  test('envia somente os campos do tipo escolhido', () => {
+    const base = { ...regraVazia(), fabrica_id: '3', cliente_id: '', uf: 'SC', codigo_antigo: 'A', codigo_novo: 'B', excecoes_clientes: [1] }
+    expect(regraParaApi(base)).toMatchObject({ fabrica_id: 3, cliente_id: null, uf: null, codigo_antigo: 'A', excecoes_clientes: [], fim: null })
+    expect(regraParaApi({ ...base, tipo: 'RESTRICAO' })).toMatchObject({ uf: 'SC', codigo_antigo: null, codigo_novo: null, excecoes_clientes: [1] })
+  })
+  test('situação considera ativação e vigência', () => {
+    const hoje = '2026-10-20'
+    expect(situacaoRegra({ ativa: false, inicio: '2026-01-01' }, hoje)).toBe('Desativada')
+    expect(situacaoRegra({ ativa: true, inicio: '2026-12-01' }, hoje)).toBe('Agendada')
+    expect(situacaoRegra({ ativa: true, inicio: '2026-01-01', fim: '2026-02-01' }, hoje)).toBe('Encerrada')
+    expect(situacaoRegra({ ativa: true, inicio: '2026-01-01', fim: null }, hoje)).toBe('Em vigor')
   })
 })

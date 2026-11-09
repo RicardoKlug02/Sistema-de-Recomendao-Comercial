@@ -249,7 +249,7 @@ test('importação exige conferência e confirmação antes de gravar', async ({
 
 test('erro de API não aparece como faturamento zero', async ({ page }) => {
   await preparar(page)
-  await page.route('**/api/v1/comercial/painel?*', (r) =>
+  await page.route('**/api/v1/comercial/painel*', (r) =>
     r.fulfill({
       status: 503,
       json: { detail: 'Serviço temporariamente indisponível.' },

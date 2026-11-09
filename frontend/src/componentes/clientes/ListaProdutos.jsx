@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { filtrarProdutos } from '../servicos/busca'
+import { filtrarProdutos } from '../../servicos/busca'
 
 // Mostra os primeiros itens e libera o restante aos poucos; a busca só aparece quando a lista é longa.
 export default function ListaProdutos({ produtos, renderizarItem, inicial = 5, incremento = 10 }) {

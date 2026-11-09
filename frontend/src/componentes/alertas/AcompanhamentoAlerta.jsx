@@ -1,29 +1,27 @@
 import { useState } from 'react'
-import { solicitar } from '../servicos/api'
-import useDados from '../hooks/useDados'
-import { dataLocal, formatarData, formatarDataHora } from '../servicos/formatacao'
-import EstadoConsulta from './EstadoConsulta'
-import { situacoesAcompanhamento } from '../servicos/acompanhamento'
+import { solicitar } from '../../servicos/api'
+import useAcao from '../../hooks/useAcao'
+import useDados from '../../hooks/useDados'
+import { dataLocal, formatarData, formatarDataHora } from '../../servicos/formatacao'
+import { permiteProximoContato, situacoesAcompanhamento } from '../../servicos/alertas'
+import EstadoConsulta from '../EstadoConsulta'
+import Seletor from '../Seletor'
 
 export default function AcompanhamentoAlerta({ grupo, aoSalvar }) {
   const atual = grupo.acompanhamento || { situacao: 'PENDENTE', versao: 0 }
   const [situacao, setSituacao] = useState(atual.situacao)
   const [motivo, setMotivo] = useState(atual.motivo || '')
   const [data, setData] = useState(atual.proximo_contato || '')
-  const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState('')
   const [verHistorico, setVerHistorico] = useState(false)
+  const gravacao = useAcao()
   const historico = useDados(verHistorico ? `/comercial/alertas/${grupo.cliente_id}/historico` : null)
-  const permiteData = ['CONTATADO', 'AGUARDANDO_RETORNO'].includes(situacao)
+  const permiteData = permiteProximoContato(situacao)
   async function salvar(e) {
-    e.preventDefault(); setSalvando(true); setErro('')
-    try {
-      await solicitar(`/comercial/alertas/${grupo.cliente_id}/acompanhamento`, { method: 'POST', body: {
-        situacao, motivo, proximo_contato: permiteData && data ? data : null, versao: atual.versao, assinatura: grupo.assinatura,
-      } })
-      aoSalvar()
-    } catch (falha) { setErro(falha.message) }
-    finally { setSalvando(false) }
+    e.preventDefault()
+    const salvou = await gravacao.executar(() => solicitar(`/comercial/alertas/${grupo.cliente_id}/acompanhamento`, { method: 'POST', body: {
+      situacao, motivo, proximo_contato: permiteData && data ? data : null, versao: atual.versao, assinatura: grupo.assinatura,
+    } }))
+    if (salvou) aoSalvar()
   }
   return <section className="acompanhamento-alerta" aria-label={`Acompanhamento de ${grupo.cliente}`}>
     <p><strong>Acompanhamento: {situacoesAcompanhamento[atual.situacao]}</strong></p>
@@ -33,14 +31,14 @@ export default function AcompanhamentoAlerta({ grupo, aoSalvar }) {
     <details><summary>Registrar acompanhamento</summary>
       <p>Compartilhado com a equipe. O registro não elimina os sinais calculados.</p>
       <form onSubmit={salvar}>
-        <fieldset disabled={salvando}>
-          <label>Situação<select aria-label="Situação do acompanhamento" value={situacao} onChange={(e) => setSituacao(e.target.value)}>{Object.entries(situacoesAcompanhamento).map(([id, nome]) => <option value={id} key={id}>{nome}</option>)}</select></label>
+        <fieldset disabled={gravacao.executando}>
+          <Seletor rotulo="Situação" aria-label="Situação do acompanhamento" opcoes={situacoesAcompanhamento} valor={situacao} aoMudar={setSituacao} />
           <label>Motivo ou observação<textarea required={situacao === 'DISPENSADO'} maxLength={1000} value={motivo} onChange={(e) => setMotivo(e.target.value)} /></label>
           {permiteData && <label>Próxima data de contato<input type="date" min={dataLocal()} required={situacao === 'AGUARDANDO_RETORNO'} value={data} onChange={(e) => setData(e.target.value)} /></label>}
-          <button className="botao-secundario" type="submit">{salvando ? 'Salvando…' : 'Salvar acompanhamento'}</button>
+          <button className="botao-secundario" type="submit">{gravacao.executando ? 'Salvando…' : 'Salvar acompanhamento'}</button>
         </fieldset>
       </form>
-      {erro && <p role="alert">{erro}</p>}
+      {gravacao.erro && <p role="alert">{gravacao.erro}</p>}
     </details>
     <details onToggle={(e) => setVerHistorico(e.currentTarget.open)}><summary>Histórico de acompanhamento</summary>
       <EstadoConsulta carregando={historico.carregando} erro={historico.erro} aoTentar={historico.tentarNovamente} />

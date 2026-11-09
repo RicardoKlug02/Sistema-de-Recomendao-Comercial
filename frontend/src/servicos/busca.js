@@ -1,4 +1,4 @@
-const normalizar = (texto) => String(texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const normalizar = (texto) => String(texto ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
 export function filtrarProdutos(produtos, termo) {
   const busca = normalizar(termo).trim()

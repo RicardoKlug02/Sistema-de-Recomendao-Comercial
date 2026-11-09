@@ -1,15 +1,11 @@
-import Icone from './Icone'
+import Icone from '../Icone'
 
 export default function CartaoCliente({ cliente, aoAbrir }) {
   return (
     <article className="cartao cartao-cliente">
       <div className="topo-cliente">
-        <span className="avatar">
-          <Icone nome="clientes" />
-        </span>
-        <span className="etiqueta etiqueta-neutra">
-          {cliente.grupo_economico ? 'Cliente comercial' : 'Cliente individual'}
-        </span>
+        <span className="avatar"><Icone nome="clientes" /></span>
+        <span className="etiqueta etiqueta-neutra">{cliente.grupo_economico ? 'Cliente comercial' : 'Cliente individual'}</span>
       </div>
       <h2>{cliente.razao_social}</h2>
       <p className="local-cliente">
@@ -17,9 +13,7 @@ export default function CartaoCliente({ cliente, aoAbrir }) {
         {[cliente.cidade, cliente.estado].filter(Boolean).join(' · ') || 'Localização não informada'}
       </p>
       <p className="rede-cliente">{cliente.cadastros_fiscais || 1} cadastro(s) fiscal(is)</p>
-      <button className="botao-abrir" onClick={() => aoAbrir(cliente.id)}>
-        Abrir ficha <Icone nome="seta" tamanho={17} />
-      </button>
+      <button className="botao-abrir" onClick={() => aoAbrir(cliente.id)}>Abrir ficha <Icone nome="seta" tamanho={17} /></button>
     </article>
   )
 }

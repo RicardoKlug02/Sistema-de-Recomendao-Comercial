@@ -1,11 +1,14 @@
-import { useEstadoPagina } from '../servicos/estadoPaginas'
-import CabecalhoPagina from '../componentes/CabecalhoPagina'
-import Seletor from '../componentes/Seletor'
-import EstadoConsulta from '../componentes/EstadoConsulta'
+import { DATA_IMPLANTACAO } from '../configuracao'
+import { useEstadoPagina } from '../hooks/estadoPaginas'
+import useDados from '../hooks/useDados'
 import Cartao from '../componentes/Cartao'
 import CartaoIndicador from '../componentes/CartaoIndicador'
-import useDados from '../hooks/useDados'
-import { dataLocal, formatarData } from '../servicos/formatacao'
+import EstadoConsulta from '../componentes/EstadoConsulta'
+import Pagina from '../componentes/Pagina'
+import Seletor from '../componentes/Seletor'
+import Tabela from '../componentes/Tabela'
+import { montarCaminho } from '../servicos/api'
+import { comSinal, dataLocal, formatarData } from '../servicos/formatacao'
 
 const metricas = [
   ['clientes_inativos', 'Clientes inativos', '90 dias ou mais sem compra'],
@@ -13,24 +16,22 @@ const metricas = [
   ['itens_inativos', 'Produtos em abandono', 'Cliente x código: regra do ciclo habitual'],
   ['clientes_reativados', 'Clientes reativados', 'Períodos anteriores e posteriores de igual duração'],
 ]
+const taxa = (valor) => (valor === null ? 'Sem base' : `${valor}%`)
+
 export default function AnaliseSistema({ fabricas = [], vendedores = [] }) {
-  const [implantacao, setImplantacao] = useEstadoPagina('analise.implantacao', '2026-09-29')
+  const [implantacao, setImplantacao] = useEstadoPagina('analise.implantacao', DATA_IMPLANTACAO)
   const [fim, setFim] = useEstadoPagina('analise.fim', dataLocal())
   const [fabrica, setFabrica] = useEstadoPagina('analise.fabrica', '')
   const [vendedor, setVendedor] = useEstadoPagina('analise.vendedor', '')
-  const parametros = new URLSearchParams({ implantacao, fim })
-  if (fabrica) parametros.set('fabrica_id', fabrica)
-  if (vendedor) parametros.set('vendedor_id', vendedor)
   const valido = implantacao && fim && implantacao <= fim && fim <= dataLocal()
-  const resposta = useDados(valido ? `/analises/impacto?${parametros}` : null)
+  const resposta = useDados(valido ? montarCaminho('/analises/impacto', { implantacao, fim, fabrica_id: fabrica, vendedor_id: vendedor }) : null)
   const d = resposta.dados
-  return <main className="conteudo-painel" id="conteudo">
-    <CabecalhoPagina titulo="Análise do sistema" descricao="Como a carteira evoluiu antes e depois da implantação." />
+  return <Pagina titulo="Análise do sistema" descricao="Como a carteira evoluiu antes e depois da implantação.">
     <div className="filtros-comerciais faixa-filtros">
       <label>Início da implantação<input type="date" value={implantacao} max={fim} onChange={(e) => setImplantacao(e.target.value)} /></label>
       <label>Acompanhar até<input type="date" value={fim} max={dataLocal()} onChange={(e) => setFim(e.target.value)} /></label>
       <Seletor rotulo="Fábrica" todos="Todas as fábricas" opcoes={fabricas} valor={fabrica} aoMudar={setFabrica} />
-      <label>Vendedor<select aria-label="Vendedor" value={vendedor} onChange={(e) => setVendedor(e.target.value)}><option value="">Toda a equipe</option>{vendedores.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}</select></label>
+      <Seletor rotulo="Vendedor" todos="Toda a equipe" opcoes={vendedores} valor={vendedor} aoMudar={setVendedor} />
     </div>
     {!valido && <p role="alert">Informe datas válidas, com fim igual ou posterior à implantação e até hoje.</p>}
     <EstadoConsulta carregando={resposta.carregando} erro={resposta.erro} aoTentar={resposta.tentarNovamente} />
@@ -44,10 +45,10 @@ export default function AnaliseSistema({ fabricas = [], vendedores = [] }) {
       <Cartao titulo="Antes e depois, acompanhando os mesmos clientes">
         <p>Escopo: {d.escopo}. Posições em {formatarData(d.base)} e {formatarData(d.fim)}.</p>
         <p>Reativações: {formatarData(d.periodo_antes.inicio)} a {formatarData(d.periodo_antes.fim)} versus {formatarData(d.periodo_depois.inicio)} a {formatarData(d.periodo_depois.fim)} — {d.dias_periodo} dias em cada período.</p>
-        <div className="rolagem-tabela"><table><thead><tr><th>Indicador</th><th>Antes</th><th>Depois</th><th>Diferença</th><th>Critério</th></tr></thead><tbody>
-          {metricas.map(([chave, nome, criterio]) => { const delta = d.depois[chave] - d.antes[chave]; return <tr key={chave}><th>{nome}</th><td>{d.antes[chave]}</td><td>{d.depois[chave]}</td><td>{delta > 0 ? '+' : ''}{delta}</td><td>{criterio}</td></tr> })}
-        </tbody></table></div>
-        <p>Taxa de clientes inativos na carteira inicial: {d.antes.taxa_inatividade === null ? 'Sem base' : `${d.antes.taxa_inatividade}%`} antes; {d.depois.taxa_inatividade === null ? 'Sem base' : `${d.depois.taxa_inatividade}%`} depois.</p>
+        <Tabela colunas={['Indicador', 'Antes', 'Depois', 'Diferença', 'Critério']}>
+          {metricas.map(([chave, nome, criterio]) => <tr key={chave}><th>{nome}</th><td>{d.antes[chave]}</td><td>{d.depois[chave]}</td><td>{comSinal(d.depois[chave] - d.antes[chave])}</td><td>{criterio}</td></tr>)}
+        </Tabela>
+        <p>Taxa de clientes inativos na carteira inicial: {taxa(d.antes.taxa_inatividade)} antes; {taxa(d.depois.taxa_inatividade)} depois.</p>
         <p>Produtos em abandono: ao menos três datas de compra, 60 dias sem comprar e mais de 2,5 vezes o ciclo médio histórico. Não são unidades: cada relação cliente x código conta uma vez.</p>
         <p>{d.antes.itens_sem_confirmacao} relações cliente x código sem confirmação antes e {d.depois.itens_sem_confirmacao} depois, por haver pedidos sem itens posteriores à última compra conhecida. Não são contadas como abandono confirmado.</p>
         <p>{d.antes.itens_total} relações cliente x código e os mesmos {d.antes.clientes_total} clientes compõem a base fixa do comparativo.</p>
@@ -58,5 +59,5 @@ export default function AnaliseSistema({ fabricas = [], vendedores = [] }) {
         <p className="nota-painel">Esta análise ainda não vincula contatos ou ações do vendedor aos pedidos. A melhora observada não pode ser atribuída automaticamente ao sistema.</p>
       </Cartao>
     </>}
-  </main>
+  </Pagina>
 }

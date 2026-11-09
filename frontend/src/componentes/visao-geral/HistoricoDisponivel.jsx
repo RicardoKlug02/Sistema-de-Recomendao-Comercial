@@ -1,5 +1,5 @@
-import useDados from '../hooks/useDados'
-import { formatarData, formatarDataHora } from '../servicos/formatacao'
+import useDados from '../../hooks/useDados'
+import { formatarData, formatarDataHora } from '../../servicos/formatacao'
 
 export default function HistoricoDisponivel({ versao }) {
   const consulta = useDados('/comercial/historico-disponivel', versao)
