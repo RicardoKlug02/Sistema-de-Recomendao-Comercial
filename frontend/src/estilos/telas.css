@@ -20,6 +20,36 @@
 }
 
 /* Clientes e ficha do cliente */
+.filtros-lista-produtos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 16px 0;
+}
+.filtros-lista-produtos > label,
+.filtros-lista-produtos .busca-lista {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.filtros-lista-produtos .busca-lista { flex-basis: 280px; margin: 0; }
+.filtros-lista-produtos input,
+.filtros-lista-produtos select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  font: inherit;
+  background: var(--campo-fundo);
+}
+.total-lista-produtos { color: var(--texto-rotulo); font-size: 13px; }
+.acoes-lista { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
 .voltar-clientes {
   display: block;
   margin-bottom: 24px;

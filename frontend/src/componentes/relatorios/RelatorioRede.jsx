@@ -5,6 +5,7 @@ import { baixarArquivo, montarCaminho } from '../../servicos/api'
 import { formatarData, formatarMoeda } from '../../servicos/formatacao'
 import Cartao from '../Cartao'
 import EstadoConsulta from '../EstadoConsulta'
+import ListaProdutos from '../clientes/ListaProdutos'
 import Seletor from '../Seletor'
 import Tabela from '../Tabela'
 
@@ -32,9 +33,11 @@ export default function RelatorioRede({ fabricas }) {
       {!redes.carregando && redes.dados?.length === 0 && <p>Não há redes cadastradas. Preencha a coluna Rede de clientes na importação.</p>}
       {consulta.dados && <>
         <p>{consulta.dados.clientes} cadastros fiscais · {consulta.dados.total} {consulta.dados.total === 1 ? 'código encontrado' : 'códigos encontrados'}.</p>
-        <Tabela colunas={['Código', 'Produto', 'Fábrica', 'Último pedido', 'Último preço unitário', 'Pedido', 'Cliente da compra']}>
-          {consulta.dados.produtos.map((p) => <tr key={p.produto_id}><td>{p.sku}</td><td>{p.nome}</td><td>{p.fabrica}</td><td>{formatarData(p.ultima_compra)}</td><td className="valor-numerico">{formatarMoeda(p.ultimo_preco)}</td><td>{p.pedido}</td><td>{p.cliente}</td></tr>)}
-        </Tabela>
+        {consulta.dados.total > 0 && <ListaProdutos key={`${rede}:${fabrica}`} produtos={consulta.dados.produtos} inicial={20} incremento={20}
+          renderizarLista={(visiveis) => <Tabela rotulo="Códigos comprados pela rede" colunas={['Código', 'Produto', 'Fábrica', 'Último pedido', 'Último preço unitário', 'Pedido', 'Cliente da compra']}>
+          {visiveis.map((p) => <tr key={p.produto_id}><td>{p.sku}</td><td>{p.nome}</td><td>{p.fabrica}</td><td>{formatarData(p.ultima_compra)}</td><td className="valor-numerico">{formatarMoeda(p.ultimo_preco)}</td><td>{p.pedido}</td><td>{p.cliente}</td></tr>)}
+        </Tabela>} />}
+        <p className="nota-painel">A busca na lista filtra somente a exibição. O PDF inclui todos os códigos da rede e da fábrica selecionadas nos filtros acima.</p>
         {!consulta.dados.total && <p>Nenhum produto comprado com os filtros selecionados.</p>}
         <p className="nota-painel">{consulta.dados.pedidos_sem_itens} pedidos sem itens. Códigos e preços desses pedidos não estão disponíveis. O último preço pertence à última compra encontrada na rede, no histórico importado.</p>
       </>}

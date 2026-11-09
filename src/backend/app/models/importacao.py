@@ -16,3 +16,4 @@ class Importacao(Base):
     itens = Column(Integer, nullable=False, default=0)
     pedidos_sem_itens = Column(Integer, nullable=False, default=0)
     avisos_json = Column(Text, nullable=False, default="[]")
+    resumo_json = Column(Text, nullable=False, default="{}")

@@ -58,22 +58,26 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
           </ListaOuVazio>
         </Cartao>
         <Cartao titulo="Produtos em abandono">
-          {cliente.produtos_sem_confirmacao?.length > 0 && <>
+          {cliente.produtos_sem_confirmacao?.length > 0 && <section aria-label="Produtos com recompra não confirmada">
+            <h3>Recompra não confirmada</h3>
             <p>Recompra não confirmada: existe pedido posterior sem itens. Estes produtos não são contados como abandono confirmado.</p>
             <ListaProdutos produtos={cliente.produtos_sem_confirmacao} renderizarItem={(p) => <li key={p.produto_id}><strong>{rotuloProduto(p)}</strong><br />{p.nome}</li>} />
-          </>}
+          </section>}
+          <section aria-label="Produtos com abandono confirmado">
+          <h3>Abandono confirmado</h3>
           <ListaOuVazio itens={cliente.produtos_em_abandono} vazio="Nenhum abandono identificado.">
             <ListaProdutos produtos={cliente.produtos_em_abandono} renderizarItem={(p) => (
               <li key={p.produto_id}><strong>{rotuloProduto(p)}</strong><br />{p.nome}: {p.dias_parado} dias sem compra conhecida.</li>
             )} />
           </ListaOuVazio>
+          </section>
         </Cartao>
         <Cartao titulo="Completar o mix">
           <details className="entenda-indicador"><summary>Entenda as recomendações</summary><p>As sugestões usam compras de redes com histórico semelhante e respeitam as regras comerciais. Afinidade é uma pontuação de ordenação, não uma probabilidade de venda. Confira o contexto comercial antes de oferecer.</p></details>
           <ListaOuVazio itens={cliente.sugestoes_expansao_mix} vazio="Ainda não há histórico semelhante suficiente para sugerir produtos.">
-            <ul>{cliente.sugestoes_expansao_mix.map((p) => (
+            <ListaProdutos produtos={cliente.sugestoes_expansao_mix} renderizarItem={(p) => (
               <li key={p.produto_id}><strong>{rotuloProduto(p)}</strong><p>{p.nome}</p><p>{p.motivo} · volume sugerido: {p.volume_sugerido_unidades}</p></li>
-            ))}</ul>
+            )} />
           </ListaOuVazio>
         </Cartao>
         <Cartao titulo="Sugestões de fábricas">

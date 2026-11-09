@@ -1,5 +1,7 @@
 import Cartao from '../Cartao'
 import Tabela from '../Tabela'
+import ListaProdutos from './ListaProdutos'
+import { correspondeVariacao } from '../../servicos/busca'
 import { formatarData, formatarMoeda, formatarNumero, formatarPercentual, rotuloProduto } from '../../servicos/formatacao'
 
 const explicacoes = {
@@ -7,6 +9,12 @@ const explicacoes = {
   SEM_BASE_COMPARACAO: 'Sem base de comparação',
   ITENS_INCOMPLETOS: 'Há pedidos sem itens nesta fábrica',
 }
+const variacoes = [
+  { id: 'queda', nome: 'Queda nas compras' },
+  { id: 'aumento', nome: 'Aumento nas compras' },
+  { id: 'estavel', nome: 'Sem variação' },
+  { id: 'sem_comparacao', nome: 'Sem comparação disponível' },
+]
 function variacao(metrica) {
   return metrica.variacao_pct === null ? explicacoes[metrica.status] || '—' : formatarPercentual(metrica.variacao_pct)
 }
@@ -22,13 +30,15 @@ export default function RitmoCompras({ ritmo, produtos }) {
     {!ritmo.historico_suficiente && <p>Para calcular a variação, é necessário histórico desde o início do período habitual e pelo menos dois pedidos nos 90 dias anteriores.</p>}
     <p>Valores positivos indicam aumento; negativos indicam redução. Esta comparação não gera alertas automáticos.</p>
     <h3>Quantidades por produto</h3>
-    {produtos.length ? <Tabela colunas={['Produto', 'Média habitual (un.)', 'Últimos 30 dias (un.)', 'Variação']}>
-      {produtos.map((p) => {
+    {produtos.length ? <ListaProdutos produtos={produtos} inicial={10} incremento={10}
+      situacoes={variacoes} filtrarSituacao={correspondeVariacao} rotuloSituacao="Variação nas compras" todasSituacoes="Todas as variações"
+      renderizarLista={(visiveis) => <Tabela rotulo="Comparação de quantidades por produto" colunas={['Produto', 'Média habitual (un.)', 'Últimos 30 dias (un.)', 'Variação']}>
+      {visiveis.map((p) => {
         const incompleto = p.status === 'ITENS_INCOMPLETOS'
         return <tr key={p.produto_id}><th>{rotuloProduto(p)}<br /><span>{p.nome}</span></th>
           <td className="valor-numerico">{incompleto ? '—' : formatarNumero(p.media_habitual)}</td><td className="valor-numerico">{incompleto ? '—' : formatarNumero(p.recente)}</td><td className="valor-numerico">{variacao(p)}</td></tr>
       })}
-    </Tabela> : <p>Sem histórico de itens nesses períodos para comparar quantidades.</p>}
+    </Tabela>} /> : <p>Sem histórico de itens nesses períodos para comparar quantidades.</p>}
     <p>Pedidos sem itens entram no valor e no número de pedidos. Se houver pedidos sem itens de uma fábrica nos períodos comparados, as quantidades dos seus produtos não são comparadas.</p>
   </Cartao>
 }

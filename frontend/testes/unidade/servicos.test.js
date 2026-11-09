@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { obterSessao } from '../../src/servicos/api'
 import { proximaAcao } from '../../src/servicos/alertas'
 import { ehGestor, entrar, registrar, validarEmail, validarFormulario } from '../../src/servicos/autenticacao'
-import { filtrarProdutos } from '../../src/servicos/busca'
+import { correspondeVariacao, filtrarProdutos } from '../../src/servicos/busca'
 import { comSinal, formatarData, formatarDataHora, formatarMoeda, formatarNumero, formatarValor, rotuloProduto } from '../../src/servicos/formatacao'
 import { conferirPlanilhas, confirmarImportacao } from '../../src/servicos/importacao'
 import { regraParaApi, regraVazia, situacaoRegra } from '../../src/servicos/regras'
@@ -86,6 +86,24 @@ describe('importação', () => {
     expect(opcoes.body.get('vendas_comissao')).toBe('true')
   })
 
+  test('sincronização mensal vincula mês e confirmação às duas etapas', async () => {
+    fetch.mockResolvedValue(responder({ mensagem: 'Conferido.' }))
+    const escopo = { modo: 'sincronizar_mes', mes: '2026-08' }
+    await conferirPlanilhas(planilha('pedidos.xlsx'), planilha('itens.xlsx'), escopo)
+    const previa = fetch.mock.calls[0][1].body
+    expect(previa.get('modo')).toBe('sincronizar_mes')
+    expect(previa.get('mes')).toBe('2026-08')
+    expect(previa.has('confirmar_sincronizacao')).toBe(false)
+    await confirmarImportacao(planilha('pedidos.xlsx'), planilha('itens.xlsx'), 'token', escopo)
+    expect(fetch.mock.calls[1][1].body.get('confirmar_sincronizacao')).toBe('true')
+  })
+
+  test('sincronização sem mês não envia arquivos', async () => {
+    await expect(conferirPlanilhas(planilha('pedidos.xlsx'), planilha('itens.xlsx'),
+      { modo: 'sincronizar_mes' })).rejects.toThrow('Selecione o mês')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   test('arquivos inválidos são bloqueados antes do envio', async () => {
     await expect(conferirPlanilhas(null, planilha('itens.xlsx'))).rejects.toThrow('Selecione as duas planilhas.')
     await expect(conferirPlanilhas(planilha('pedidos.txt'), planilha('itens.xlsx'))).rejects.toThrow('XLS ou XLSX')
@@ -132,6 +150,33 @@ describe('busca de produtos', () => {
   test('termo vazio devolve a lista inteira', () => {
     expect(filtrarProdutos(produtos, '  ')).toBe(produtos)
     expect(filtrarProdutos(produtos, 'inexistente')).toEqual([])
+  })
+  test('combina palavras do código, nome e fábrica sem depender da ordem', () => {
+    const lista = [{ ...produtos[0], fabrica: 'Fábrica Águia' }, { ...produtos[1], fabrica: 'Mec Tronic' }]
+    expect(filtrarProdutos(lista, 'aguia limao 1020')).toEqual([lista[0]])
+    expect(filtrarProdutos(lista, '  tronic   SABAO ')).toEqual([lista[1]])
+    expect(filtrarProdutos(lista, 'aguia sabao')).toEqual([])
+    expect(filtrarProdutos(lista, 'mec')).toEqual([lista[1]])
+  })
+})
+
+describe('filtros da comparação de produtos', () => {
+  test('distingue queda, aumento e estabilidade sem criar um limite de atenção', () => {
+    expect(correspondeVariacao({ status: 'COMPARAVEL', variacao_pct: -0.1 }, 'queda')).toBe(true)
+    expect(correspondeVariacao({ status: 'COMPARAVEL', variacao_pct: 0.1 }, 'aumento')).toBe(true)
+    expect(correspondeVariacao({ status: 'COMPARAVEL', variacao_pct: 0 }, 'estavel')).toBe(true)
+    expect(correspondeVariacao({ status: 'COMPARAVEL', variacao_pct: 0 }, 'queda')).toBe(false)
+    expect(correspondeVariacao({ status: 'COMPARAVEL', variacao_pct: -10 }, 'aumento')).toBe(false)
+  })
+  test('ausência de comparação não aparece como queda nem como estabilidade', () => {
+    for (const status of ['HISTORICO_INSUFICIENTE', 'SEM_BASE_COMPARACAO', 'ITENS_INCOMPLETOS']) {
+      const produto = { status, variacao_pct: null }
+      expect(correspondeVariacao(produto, 'sem_comparacao')).toBe(true)
+      expect(correspondeVariacao(produto, 'queda')).toBe(false)
+      expect(correspondeVariacao(produto, 'estavel')).toBe(false)
+      expect(correspondeVariacao(produto, '')).toBe(true)
+    }
+    expect(correspondeVariacao({ status: 'COMPARAVEL', variacao_pct: Number.NaN }, 'sem_comparacao')).toBe(true)
   })
 })
 

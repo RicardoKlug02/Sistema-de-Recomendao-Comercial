@@ -9,6 +9,16 @@
 - Ao abrir um cliente pelos alertas ou painel, o filtro de fábrica acompanha a navegação. O botão de retorno restaura a seção de origem, seus filtros e a posição de rolagem. Busca e página da lista de clientes são preservadas.
 - Consultas com erro oferecem nova tentativa sem recarregar a aplicação. O refresh da mesma consulta mantém o conteúdo anterior durante a atualização; mudanças de filtros não exibem os dados do filtro anterior.
 
+## Filtros das listas de produtos
+
+As listas de reposição, abandono confirmado, recompra não confirmada e ampliação de mix compartilham busca por código, nome ou fábrica. A busca combina palavras de campos diferentes e ignora acentos e maiúsculas. Quando há mais de uma fábrica na lista, um seletor permite restringir os produtos. Listas longas começam com cinco produtos; Mostrar mais acrescenta até dez e Mostrar menos retorna aos cinco iniciais.
+
+A comparação de quantidades com a média histórica começa com dez produtos, acrescentando dez por clique. Seus filtros combinam busca, fábrica e variação: queda, aumento, estabilidade ou comparação indisponível. Produtos sem base, com histórico insuficiente ou com itens incompletos ficam no último grupo, sem serem interpretados como queda ou variação zero.
+
+Os controles mostram quantos produtos estão visíveis, quantos correspondem aos filtros e o total da lista. Limpar filtros restaura a busca, os seletores e o limite inicial. Cada lista mantém controles independentes; alterar uma delas não filtra as outras nem modifica os indicadores financeiros ou os alertas. A paginação é visual e trabalha sobre os produtos já recebidos pela ficha.
+
+O relatório de códigos comprados pela rede usa os mesmos controles, começando com vinte produtos e acrescentando vinte por clique. A busca e o filtro local não limitam o PDF: a exportação continua considerando a rede e o filtro de fábrica do cabeçalho, conforme indicado na tela.
+
 ## Histórico disponível
 
 A visão geral exibe primeira/última venda conhecida, quantidade de pedidos e última importação registrada. Vendas futuras são excluídas desse resumo. A faixa não comprova que todos os meses foram importados. A nota de primeira compra registrada na base permanece. Datas e horários são apresentados em português brasileiro, com horários em America/Sao_Paulo.

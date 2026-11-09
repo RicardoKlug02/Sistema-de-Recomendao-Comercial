@@ -3,6 +3,7 @@ import hashlib
 import math
 import re
 import unicodedata
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Optional
 import pandas as pd
@@ -88,7 +89,7 @@ class ExcelService:
                 return self._mapear_colunas(df.dropna(how="all"))
         raise ValueError("Cabeçalho não encontrado. Use colunas Pedido, Data, Cliente, CNPJ/CPF, Fábrica e Valor Total.")
 
-    def _limpar_excel_cabecalho(self, caminho_arquivo):
+    def _limpar_excel_cabecalho(self, caminho_arquivo, permitir_vazio=False):
         df = self._ler_tabela(caminho_arquivo)
         obrigatorias = {"pedido", "data", "fabrica", "cnpj_cpf", "valor_total"}
         faltantes = obrigatorias - set(df.columns)
@@ -101,7 +102,7 @@ class ExcelService:
         df = df.dropna(subset=["pedido"]).copy()
         df["pedido"] = df["pedido"].map(identificador)
         df = df[df["pedido"] != ""]
-        if df.empty:
+        if df.empty and not permitir_vazio:
             raise ValueError("A planilha de pedidos está vazia.")
         df["valor_total"] = df["valor_total"].map(self._converter_valor_br)
         return df.reset_index(drop=True)
@@ -160,8 +161,26 @@ class ExcelService:
             self.db.rollback()
             raise
 
-    def _preparar_carga(self, df_cab, df_prod):
-        if df_cab.empty:
+    @staticmethod
+    def _periodo_sincronizacao(modo, mes):
+        if modo == "atualizar":
+            if mes:
+                raise ValueError("Informe um mês somente no modo Sincronizar mês completo.")
+            return None
+        if modo != "sincronizar_mes" or not re.fullmatch(r"\d{4}-\d{2}", mes or ""):
+            raise ValueError("Selecione o modo de importação e um mês válido (AAAA-MM).")
+        try:
+            inicio = date.fromisoformat(f"{mes}-01")
+            fim = date(inicio.year + (inicio.month == 12), inicio.month % 12 + 1, 1)
+        except ValueError:
+            raise ValueError("Informe um mês válido para sincronizar.")
+        if inicio > hoje_comercial():
+            raise ValueError("Não é possível sincronizar um mês futuro.")
+        return inicio, fim
+
+    def _preparar_carga(self, df_cab, df_prod, modo="atualizar", mes=None):
+        periodo = self._periodo_sincronizacao(modo, mes)
+        if df_cab.empty and not periodo:
             raise ValueError("A planilha de pedidos está vazia.")
         # Valida toda a carga antes de qualquer substituição dos itens.
         chaves = set()
@@ -196,6 +215,8 @@ class ExcelService:
                 raise ValueError(f"Pedido {pedido}, fábrica {fabrica}, linha {linha + 1}: data de emissão "
                                  f"{data:%d/%m/%Y} posterior a hoje ({hoje:%d/%m/%Y}). "
                                  "Corrija a planilha e confira novamente. Nenhum pedido desta carga foi importado.")
+            if periodo and not periodo[0] <= data < periodo[1]:
+                raise ValueError(f"Pedido {pedido}: a data está fora do mês {mes}. Nenhuma alteração foi salva.")
             valor = self._converter_valor_br(row.get("valor_total"))
             if valor < 0:
                 raise ValueError(f"Pedido {pedido}: valor total negativo.")
@@ -219,20 +240,39 @@ class ExcelService:
             if not sku or qtd <= 0 or qtd != int(qtd) or preco < 0:
                 raise ValueError(f"Pedido {pedido}: SKU, quantidade inteira positiva ou preço inválido.")
             grupos.setdefault((fabrica_item, pedido), []).append((sku, texto(item["nome_produto"]) or sku, int(qtd), preco))
+        if periodo and ignorados:
+            raise ValueError("A sincronização mensal exige itens com cabeçalhos correspondentes. "
+                             "Confira se as duas planilhas são completas e do mesmo mês.")
         return cabecalhos, grupos, ignorados
 
-    def conferir(self, df_cab, df_prod):
-        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod)
+    def _pedidos_ausentes(self, cabecalhos, modo, mes):
+        periodo = self._periodo_sincronizacao(modo, mes)
+        if not periodo:
+            return []
+        chaves = {(c[2].casefold(), c[1]) for c in cabecalhos}
+        return [v for v, fabrica in self.db.query(Venda, Fabrica.nome_fantasia)
+                .join(Fabrica, Fabrica.id == Venda.fabrica_id)
+                .filter(Venda.data_venda >= periodo[0], Venda.data_venda < periodo[1]).all()
+                if (fabrica.casefold(), v.numero_pedido) not in chaves]
+
+    def conferir(self, df_cab, df_prod, modo="atualizar", mes=None):
+        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod, modo, mes)
         fabricas = {f.id: f.nome_fantasia.casefold() for f in self.db.query(Fabrica).all()}
         numeros = {c[1] for c in cabecalhos}
         existentes = {(fabricas[v.fabrica_id], v.numero_pedido): v for v in
                       self.db.query(Venda).filter(Venda.numero_pedido.in_(numeros)).all()}
         itens_anteriores = {}
-        ids = [v.id for v in existentes.values()]
+        ausentes = self._pedidos_ausentes(cabecalhos, modo, mes)
+        ids = [v.id for v in existentes.values()] + [v.id for v in ausentes]
         for item in self.db.query(ItemVenda).filter(ItemVenda.venda_id.in_(ids)).order_by(ItemVenda.id):
             itens_anteriores.setdefault(item.venda_id, []).append(item)
         registros, estado = [], []
-        atualizados = sem_itens = total_itens = 0
+        atualizados = sem_itens = total_itens = removidos = reduzidos = 0
+        produtos = {p.id: p.sku for p in self.db.query(Produto).all()}
+        def registrar_estado(venda):
+            anteriores = itens_anteriores.get(venda.id, [])
+            estado.append([venda.id, venda.cliente_id, venda.vendedor_id, str(venda.data_venda), venda.valor_total,
+                           [[i.id, i.produto_id, i.quantidade, i.preco_unitario] for i in anteriores]])
         por_fabrica = {}
         for row, pedido, fabrica, _, data, valor in cabecalhos:
             chave = (fabrica.casefold(), pedido)
@@ -244,38 +284,65 @@ class ExcelService:
             por_fabrica[fabrica] = por_fabrica.get(fabrica, 0) + valor
             if venda:
                 anteriores = itens_anteriores.get(venda.id, [])
-                estado.append([venda.id, venda.cliente_id, venda.vendedor_id, str(venda.data_venda), venda.valor_total,
-                               [[i.id, i.produto_id, i.quantidade, i.preco_unitario] for i in anteriores]])
+                registrar_estado(venda)
+                if itens or modo == "sincronizar_mes":
+                    novos = {}
+                    antigos = {}
+                    for sku, _, qtd, _ in itens:
+                        novos[sku] = novos.get(sku, 0) + qtd
+                    for i in anteriores:
+                        sku = produtos[i.produto_id]
+                        antigos[sku] = antigos.get(sku, 0) + i.quantidade
+                        removidos += sku not in novos
+                    reduzidos += sum(sku in novos and novos[sku] < qtd for sku, qtd in antigos.items())
             registros.append({"pedido": pedido, "fabrica": fabrica, "cliente": texto(row.get("cliente")),
                               "data": data.isoformat(), "valor": valor, "itens": len(itens),
                               "acao": "Atualizar" if venda else "Adicionar"})
+        excluidos = []
+        for venda in ausentes:
+            registrar_estado(venda)
+            anteriores = itens_anteriores.get(venda.id, [])
+            removidos += len(anteriores)
+            excluidos.append({"pedido": venda.numero_pedido, "fabrica": fabricas[venda.fabrica_id],
+                              "data": venda.data_venda.isoformat(), "valor": venda.valor_total,
+                              "itens": len(anteriores), "acao": "Excluir"})
         from src.backend.app.models import Importacao
         ultima = self.db.query(Importacao.id).order_by(Importacao.id.desc()).first()
         import json
-        assinatura = hashlib.sha256(json.dumps([estado, ultima[0] if ultima else 0], sort_keys=True).encode()).hexdigest()
+        assinatura = hashlib.sha256(json.dumps([sorted(estado), ultima[0] if ultima else 0], sort_keys=True).encode()).hexdigest()
         avisos = []
         if ignorados:
             avisos.append(f"{ignorados} linhas de itens sem pedido correspondente serão ignoradas. Confira o período dos arquivos.")
-        if sem_itens:
+        if sem_itens and modo == "atualizar":
             avisos.append(f"{sem_itens} pedidos sem itens nesta carga: entram no faturamento. Itens anteriormente importados serão conservados.")
         if atualizados:
             avisos.append("Pedidos existentes serão atualizados, sem duplicação. Quando houver itens na carga, eles substituirão os itens anteriores do pedido.")
+        if modo == "sincronizar_mes":
+            avisos.append(f"Sincronização de {mes}: os arquivos devem conter todas as vendas do mês, "
+                          "de todos os vendedores e fábricas. Pedidos ausentes serão excluídos e os itens dos pedidos "
+                          "informados serão substituídos, inclusive quando a nova lista estiver vazia. Outros meses serão preservados.")
         if "tipo_pedido" not in df_cab:
             avisos.append("O arquivo não informa o tipo do pedido. Confirme que contém somente vendas efetivadas que geram comissão.")
         datas = [c[4] for c in cabecalhos]
-        return {"processados": len(cabecalhos), "adicionados": len(cabecalhos) - atualizados,
+        periodo = self._periodo_sincronizacao(modo, mes)
+        return {"modo": modo, "mes": mes, "excluidos": len(ausentes), "itens_removidos": removidos,
+                "quantidades_reduzidas": reduzidos, "pedidos_excluidos": excluidos[:100],
+                "valor_excluido": round(sum(v.valor_total for v in ausentes), 2),
+                "processados": len(cabecalhos), "adicionados": len(cabecalhos) - atualizados,
                 "atualizados": atualizados, "itens": total_itens, "pedidos_sem_itens": sem_itens,
                 "itens_ignorados": ignorados, "valor_total": round(sum(c[5] for c in cabecalhos), 2),
-                "inicio": min(datas).isoformat(), "fim": max(datas).isoformat(), "avisos": avisos,
+                "inicio": (min(datas) if datas else periodo[0]).isoformat(),
+                "fim": (max(datas) if datas else date.fromordinal(periodo[1].toordinal() - 1)).isoformat(), "avisos": avisos,
                 "fabricas": [{"nome": f, "valor": round(v, 2)} for f, v in por_fabrica.items()],
                 "pedidos": registros[:100], "estado": assinatura}
 
-    def _validar_e_salvar(self, df_cab, df_prod, commit=True):
-        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod)
+    def _validar_e_salvar(self, df_cab, df_prod, commit=True, modo="atualizar", mes=None):
+        cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod, modo, mes)
         if self.db.bind.dialect.name == "postgresql":
             from sqlalchemy import text
             if not self.db.execute(text("SELECT pg_try_advisory_xact_lock(20260929)")).scalar():
                 raise ValueError("Outra importação está em andamento. Aguarde a conclusão antes de enviar novamente.")
+        ausentes = self._pedidos_ausentes(cabecalhos, modo, mes)
         fabricas_cache = {f.nome_fantasia.casefold(): f for f in self.db.query(Fabrica).all()}
         vendedores = {v.nome.casefold(): v for v in self.db.query(Vendedor).all()}
         clientes = {c.cnpj_hash: c for c in self.db.query(Cliente).all() if c.cnpj_hash}
@@ -336,15 +403,17 @@ class ExcelService:
             venda.cliente_id, venda.data_venda, venda.valor_total = cliente.id, data, valor
             venda.vendedor_id = vendedor.id if vendedor else None
             lista = grupos.get((nome_fabrica.casefold(), pedido), [])
-            if lista:
+            if lista or modo == "sincronizar_mes":
                 cargas.append((venda, lista))
-            else:
+            if not lista:
                 sem_itens += 1
         self.db.flush()
-        # Substitui somente pedidos com itens nesta carga; conserva os demais.
-        ids = [v.id for v, _ in cargas]
+        # No modo mensal, também remove pedidos ausentes e listas que ficaram vazias.
+        ids = [v.id for v, _ in cargas] + [v.id for v in ausentes]
         if ids:
             self.db.query(ItemVenda).filter(ItemVenda.venda_id.in_(ids)).delete(synchronize_session=False)
+        if ausentes:
+            self.db.query(Venda).filter(Venda.id.in_([v.id for v in ausentes])).delete(synchronize_session=False)
         itens_salvos = 0
         for venda, lista in cargas:
             for sku, _, quantidade, preco in lista:
@@ -356,11 +425,14 @@ class ExcelService:
             avisos.append(f"{ignorados} linhas de itens sem cabeçalho correspondente não foram importadas. Confira os filtros dos relatórios.")
         if sem_itens:
             avisos.append(f"{sem_itens} pedidos sem itens na carga: mantidos no faturamento. As análises de mix utilizam somente itens conhecidos.")
+        if modo == "sincronizar_mes":
+            avisos.append(f"Mês {mes} sincronizado: {len(ausentes)} pedidos ausentes excluídos. Outros meses preservados.")
         if commit:
             self.db.commit()
         else:
             self.db.flush()
         return {"mensagem": "Importação concluída.", "processados": len(cabecalhos),
+                "modo": modo, "mes": mes, "excluidos": len(ausentes),
                 "adicionados": adicionados, "atualizados": atualizados, "itens": itens_salvos,
                 "pedidos_sem_itens": sem_itens, "itens_ignorados": ignorados, "avisos": avisos}
     @staticmethod
