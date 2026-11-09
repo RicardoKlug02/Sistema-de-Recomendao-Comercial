@@ -18,5 +18,7 @@ export default function useDados(endpoint, versao = 0) {
     })
     return () => { ativa = false; controlador.abort() }
   }, [endpoint, chave, base])
-  return resultado.chave === chave ? { ...resultado, carregando: false, tentarNovamente } : { dados: resultado.base === base ? resultado.dados : null, erro: '', carregando: !!endpoint, tentarNovamente }
+  if (resultado.chave === chave) return { ...resultado, carregando: false, tentarNovamente }
+  const dadosAnteriores = resultado.base === base ? resultado.dados : null
+  return { dados: dadosAnteriores, erro: '', carregando: !!endpoint, tentarNovamente }
 }

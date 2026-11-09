@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import CartaoAutenticacao from './componentes/CartaoAutenticacao'
-import FormularioAutenticacao from './componentes/FormularioAutenticacao'
+import CartaoAutenticacao from './componentes/autenticacao/CartaoAutenticacao'
+import FormularioAutenticacao from './componentes/autenticacao/FormularioAutenticacao'
 import PainelComercial from './paginas/PainelComercial'
 import { tituloDocumento } from './secoes'
 import { obterSessao, salvarSessao, solicitar } from './servicos/api'
@@ -28,17 +28,10 @@ export default function Aplicacao() {
     let ativa = true
     if (obterSessao())
       solicitar('/auth/me')
-        .then((dados) => {
-          if (ativa) definirUsuario(dados)
-        })
+        .then((dados) => { if (ativa) definirUsuario(dados) })
         .catch(() => salvarSessao(null))
-        .finally(() => {
-          if (ativa) definirVerificando(false)
-        })
-    const expirar = () => {
-      definirUsuario(null)
-      definirTela('entrar')
-    }
+        .finally(() => { if (ativa) definirVerificando(false) })
+    const expirar = () => { definirUsuario(null); definirTela('entrar') }
     window.addEventListener('sessao-expirada', expirar)
     return () => {
       ativa = false
@@ -58,23 +51,13 @@ export default function Aplicacao() {
     definirTela('entrar')
   }
 
-  if (verificando)
-    return (
-      <main className="pagina-autenticacao">
-        <p role="status">Verificando acesso…</p>
-      </main>
-    )
+  if (verificando) return <main className="pagina-autenticacao"><p role="status">Verificando acesso…</p></main>
   if (usuario) return <PainelComercial usuario={usuario} aoSair={sair} />
   const { titulo, subtitulo, alternativa } = telas[tela]
   return (
     <main className="pagina-autenticacao">
       <CartaoAutenticacao titulo={titulo} subtitulo={subtitulo} referenciaTitulo={referenciaTitulo}>
-        <FormularioAutenticacao
-          key={tela}
-          modo={tela}
-          aoEntrar={definirUsuario}
-          aoNavegar={() => definirTela(alternativa)}
-        />
+        <FormularioAutenticacao key={tela} modo={tela} aoEntrar={definirUsuario} aoNavegar={() => definirTela(alternativa)} />
       </CartaoAutenticacao>
     </main>
   )

@@ -5,6 +5,10 @@ export function validarEmail(email) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Informe um e-mail válido.'
   return ''
 }
+export function validarFormulario({ cadastro = false, nome = '', email, senha }) {
+  return validarEmail(email) || (!senha ? 'Informe a senha.' : '') ||
+    (cadastro && (nome.trim().length < 2 || senha.length < 6) ? 'Informe nome e senha com pelo menos 6 caracteres.' : '')
+}
 export async function entrar({ email, senha }) {
   const dados = await solicitar('/auth/login', { method: 'POST',
     body: new URLSearchParams({ username: email.trim(), password: senha }) })
@@ -15,4 +19,4 @@ export async function entrar({ email, senha }) {
 export async function registrar({ nome, email, senha }) {
   return solicitar('/auth/registrar', { method: 'POST', body: { nome, email, senha } })
 }
-export const ehGestor = (usuario) => ['admin', 'gestor'].includes(usuario.perfil)
+export const ehGestor = (usuario) => ['admin', 'gestor'].includes(usuario?.perfil)

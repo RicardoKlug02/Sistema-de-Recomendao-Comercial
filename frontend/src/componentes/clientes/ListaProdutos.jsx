@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { filtrarProdutos } from '../servicos/busca'
+import { filtrarProdutos } from '../../servicos/busca'
 
 // Os mesmos filtros e limites atendem às listas e às tabelas de produtos.
 export default function ListaProdutos({ produtos, renderizarItem, renderizarLista, inicial = 5, incremento = 10,
