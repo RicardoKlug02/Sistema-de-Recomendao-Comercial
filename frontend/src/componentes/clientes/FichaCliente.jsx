@@ -4,6 +4,7 @@ import EstadoConsulta from '../EstadoConsulta'
 import Tabela from '../Tabela'
 import ListaProdutos from './ListaProdutos'
 import RitmoCompras from './RitmoCompras'
+import ExportarVisita from './ExportarVisita'
 import OrigemInformacao from '../OrigemInformacao'
 import useDados from '../../hooks/useDados'
 import { montarCaminho } from '../../servicos/api'
@@ -24,6 +25,7 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
         <h2>{cliente.razao_social}</h2>
         <p>{cliente.grupo_economico || 'Cliente individual'} · {cliente.clientes_agrupados} cadastro(s) fiscal(is)</p>
       </section>
+      <ExportarVisita key={`${clienteId}:${rede}:${fabrica}`} cliente={cliente} rede={rede} fabrica={fabrica} />
       {cliente.origem && <div className="nota-painel">
         <p>Fonte: {cliente.origem.fonte}. Posição em {formatarData(cliente.origem.referencia)}.
           {' '}Escopo: {cliente.origem.escopo}. Rede cadastrada: {cliente.grupo_economico || 'Nenhuma — este CNPJ é analisado individualmente'}.

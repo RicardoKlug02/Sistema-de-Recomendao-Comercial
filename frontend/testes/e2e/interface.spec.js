@@ -264,6 +264,9 @@ test('importação exige conferência e confirmação antes de gravar', async ({
     return r.fulfill({
       json: {
         mensagem: 'Importação concluída.',
+        valor_arquivo: 100,
+        conferencia_base: { inicio: '2026-08-01', fim: '2026-08-31', pedidos_compra: 1, linhas_itens: 1,
+          valor_comissionado: 100, ajustes_comissionados: 0, fora_analises: 0, pedidos_sem_itens: 0, pendentes_sem_itens: 0 },
         processados: 1,
         adicionados: 1,
         atualizados: 0,
@@ -296,6 +299,7 @@ test('importação exige conferência e confirmação antes de gravar', async ({
     '1 pedidos: 1 novos e 0 atualizados; 1 itens importados.',
   )
   expect(gravacoes).toBe(1)
+  await expect(page.getByRole('region', { name: 'Conferência final da importação' })).toContainText('Valor comissionado na base: R$ 100,00')
 })
 
 test('erro de API não aparece como faturamento zero', async ({ page }) => {
@@ -418,6 +422,48 @@ test('alertas preservam fábrica e vendedor ao voltar e registram acompanhamento
   await expect(page.getByText('Acompanhamento: Contatado', { exact: true })).toBeVisible()
   await page.getByText('Histórico de acompanhamento', { exact: true }).click()
   await expect(page.locator('ol').getByText('Contato de demonstração', { exact: true })).toBeVisible()
+  await page.getByText('Registrar acompanhamento', { exact: true }).click()
+  await page.getByLabel('Situação do acompanhamento').selectOption('RECOMPRA_REALIZADA')
+  await page.getByLabel('Motivo ou observação').fill('Pedido 123, fábrica Exemplo, confirmado')
+  await page.getByRole('button', { name: 'Salvar acompanhamento' }).click()
+  await expect(page.getByText('Acompanhamento: Recompra realizada (informada)', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 × Fábrica inativa', { exact: true })).toBeVisible()
+})
+
+test('PDF da visita respeita produtos escolhidos e filtros da ficha', async ({ page }, testInfo) => {
+  await preparar(page)
+  const produtos = Array.from({ length: 24 }, (_, i) => ({ produto_id: i + 1, sku: String(21000 + i),
+    nome: `Produto de demonstração ${i + 1}`, fabrica: 'Fábrica Exemplo', dias_parado: 125 }))
+  await page.route('**/api/v1/clientes/1?*', r => r.fulfill({ json: {
+    ...cliente, cliente_id: 1, clientes_agrupados: 1, valor_comprado: 100, pedidos_emitidos: 3,
+    cadastros_fiscais: [], ritmo_compras: null, comparacao_produtos: [], resumo_fabricas: [],
+    sugestoes_reposicao: [], sugestoes_expansao_mix: [], sugestoes_fabricas: [],
+    produtos_em_abandono: produtos, produtos_sem_confirmacao: [],
+  } }))
+  let enviado
+  await page.route('**/api/v1/clientes/1/visita.pdf', async r => {
+    enviado = r.request().postDataJSON()
+    expect(r.request().headers().authorization).toBe('Bearer token-de-teste')
+    await r.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%%EOF' })
+  })
+  await entrar(page)
+  await page.getByRole('link', { name: 'Clientes', exact: true }).click()
+  await page.getByRole('button', { name: 'Abrir ficha', exact: true }).click()
+  await page.getByLabel('Fábrica', { exact: true }).selectOption('1')
+  await page.getByText('Preparar visita e exportar PDF', { exact: true }).click()
+  await expect(page.getByLabel('Incluir último preço pago')).not.toBeChecked()
+  await page.getByRole('button', { name: 'Desmarcar todos', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Baixar preparação da visita em PDF' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Mostrar mais produtos' }).click()
+  await page.getByLabel('Buscar produto para o PDF').fill('21023')
+  await page.getByRole('checkbox', { name: /Código 21023/ }).check()
+  await page.getByLabel('Incluir último preço pago').check()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Baixar preparação da visita em PDF' }).click()
+  expect((await download).suggestedFilename()).toBe('preparacao-visita-1.pdf')
+  expect(enviado).toMatchObject({ fabrica_id: 1, agrupar_rede: true, produtos_ids: [24], mostrar_precos: true })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy()
+  await page.screenshot({ path: `../output/usabilidade/visita-${testInfo.project.name}.png`, fullPage: true })
 })
 
 test('consulta com erro pode ser tentada novamente sem recarregar', async ({ page }) => {

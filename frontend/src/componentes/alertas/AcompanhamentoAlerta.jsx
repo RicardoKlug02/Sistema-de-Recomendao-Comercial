@@ -29,11 +29,11 @@ export default function AcompanhamentoAlerta({ grupo, aoSalvar }) {
     {atual.proximo_contato && <p>Próximo contato: {formatarData(atual.proximo_contato)}{atual.proximo_contato < dataLocal() && ' · Data vencida'}</p>}
     {atual.usuario && <p>Último registro por {atual.usuario} em {formatarDataHora(atual.atualizado_em)}.</p>}
     <details><summary>Registrar acompanhamento</summary>
-      <p>Compartilhado com a equipe. O registro não elimina os sinais calculados.</p>
+      <p>Compartilhado com a equipe. O registro não elimina os sinais calculados. Os resultados são informados pela equipe: não comprovam vendas nem alteram as recomendações. Para descontinuação, informe fábrica e códigos; para recompra, informe o pedido. Use as regras de negócio para alterar o tratamento dos produtos.</p>
       <form onSubmit={salvar}>
         <fieldset disabled={gravacao.executando}>
           <Seletor rotulo="Situação" aria-label="Situação do acompanhamento" opcoes={situacoesAcompanhamento} valor={situacao} aoMudar={setSituacao} />
-          <label>Motivo ou observação<textarea required={situacao === 'DISPENSADO'} maxLength={1000} value={motivo} onChange={(e) => setMotivo(e.target.value)} /></label>
+          <label>Motivo ou observação<textarea required={['DISPENSADO','RECOMPRA_REALIZADA','PRODUTO_DESCONTINUADO'].includes(situacao)} minLength={['RECOMPRA_REALIZADA','PRODUTO_DESCONTINUADO'].includes(situacao) ? 5 : undefined} maxLength={1000} value={motivo} onChange={(e) => setMotivo(e.target.value)} /></label>
           {permiteData && <label>Próxima data de contato<input type="date" min={dataLocal()} required={situacao === 'AGUARDANDO_RETORNO'} value={data} onChange={(e) => setData(e.target.value)} /></label>}
           <button className="botao-secundario" type="submit">{gravacao.executando ? 'Salvando…' : 'Salvar acompanhamento'}</button>
         </fieldset>

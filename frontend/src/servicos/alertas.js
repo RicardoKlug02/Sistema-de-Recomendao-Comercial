@@ -6,7 +6,7 @@ export const tiposAlerta = {
   PRODUTO_EM_RISCO: 'Produto em risco',
 }
 
-export const situacoesAcompanhamento = { PENDENTE: 'Pendente', CONTATADO: 'Contatado', AGUARDANDO_RETORNO: 'Aguardando retorno', DISPENSADO: 'Dispensado' }
+export const situacoesAcompanhamento = { PENDENTE: 'Pendente', CONTATADO: 'Contatado', AGUARDANDO_RETORNO: 'Aguardando retorno', DISPENSADO: 'Dispensado', RECOMPRA_REALIZADA: 'Recompra realizada (informada)', PRODUTO_DESCONTINUADO: 'Produto descontinuado (informado)' }
 
 export const permiteProximoContato = (situacao) => ['CONTATADO', 'AGUARDANDO_RETORNO'].includes(situacao)
 

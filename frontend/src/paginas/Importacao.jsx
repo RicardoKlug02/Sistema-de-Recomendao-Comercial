@@ -8,6 +8,7 @@ import useDados from '../hooks/useDados'
 import { dataLocal, formatarData, formatarMoeda } from '../servicos/formatacao'
 import { conferirPlanilhas, confirmarImportacao } from '../servicos/importacao'
 import RevisaoPedidos from '../componentes/RevisaoPedidos'
+import ConferenciaCarga from '../componentes/ConferenciaCarga'
 
 export default function Importacao({ aoImportar }) {
   const confirmacaoId = useId()
@@ -129,6 +130,7 @@ export default function Importacao({ aoImportar }) {
             <p>{resultado.processados} pedidos: {resultado.adicionados} novos e {resultado.atualizados} atualizados; {resultado.itens} itens importados.</p>
             {resultado.modo === 'sincronizar_mes' && <p>Mês {resultado.mes} sincronizado: {resultado.excluidos} pedidos excluídos, {resultado.itens_removidos} linhas de itens removidas e {resultado.quantidades_reduzidas} produtos com quantidade reduzida.</p>}
             {resultado.avisos.map((aviso) => <p key={aviso}>{aviso}</p>)}
+            <ConferenciaCarga carga={resultado} />
           </div>
         )}
       </Cartao>
@@ -142,7 +144,8 @@ export default function Importacao({ aoImportar }) {
           <Tabela colunas={['Pedidos', 'Itens', 'Data', 'Usuário', 'Pedidos processados', 'Operação']}>
             {historico.dados.map((h) => (
               <tr key={h.id}><td>{h.arquivo}</td><td>{h.arquivo_itens}</td><td>{h.data}</td><td>{h.usuario}</td><td>{h.processados}</td>
-                <td>{h.modo === 'sincronizar_mes' ? `Mês ${h.mes}: ${h.excluidos} pedidos excluídos, ${h.itens_removidos} itens removidos` : 'Atualização dos pedidos informados'}</td></tr>
+                <td>{h.modo === 'sincronizar_mes' ? `Mês ${h.mes}: ${h.excluidos} pedidos excluídos, ${h.itens_removidos} itens removidos` : 'Atualização dos pedidos informados'}
+                  <details><summary>Ver conferência da carga</summary><ConferenciaCarga carga={h} /></details></td></tr>
             ))}
           </Tabela>
         )}

@@ -84,6 +84,7 @@ class ClienteService:
                 Fabrica.nome_fantasia.label("fabrica_nome"),
                 ItemVenda.produto_id,
                 ItemVenda.quantidade,
+                ItemVenda.preco_unitario,
                 Produto.sku,
                 Produto.nome.label("produto_nome"),
             )

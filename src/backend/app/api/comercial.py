@@ -13,6 +13,8 @@ from src.backend.app.services.comercial_service import ComercialService
 from src.backend.app.services.cliente_service import ClienteService
 from src.backend.app.services.identidade_cliente import IdentidadeCliente
 
+SituacaoAcao = Literal['PENDENTE','CONTATADO','AGUARDANDO_RETORNO','DISPENSADO','RECOMPRA_REALIZADA','PRODUTO_DESCONTINUADO']
+
 router = APIRouter(prefix="/comercial", tags=["Painel e Central de Alertas"],
                    dependencies=[Depends(get_usuario_atual)])
 
@@ -32,7 +34,7 @@ def vendedores(db: Session = Depends(get_db)):
 
 
 @router.get("/alertas")
-def alertas(vendedor_id: Optional[int] = None, tipo: Optional[str] = None, fabrica_id: Optional[int] = None, situacao: Optional[Literal['PENDENTE','CONTATADO','AGUARDANDO_RETORNO','DISPENSADO']] = None,
+def alertas(vendedor_id: Optional[int] = None, tipo: Optional[str] = None, fabrica_id: Optional[int] = None, situacao: Optional[SituacaoAcao] = None,
             pagina: int = Query(1, ge=1), limite: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
     registros = ComercialService(db).alertas(vendedor_id, fabrica_id)
     if tipo:
@@ -72,7 +74,7 @@ def historico_disponivel(db:Session=Depends(get_db)):
 
 
 class AcaoEntrada(BaseModel):
-    situacao: Literal['PENDENTE','CONTATADO','AGUARDANDO_RETORNO','DISPENSADO']
+    situacao: SituacaoAcao
     motivo: str = Field('',max_length=1000)
     proximo_contato: date | None = None
     versao: int = Field(0,ge=0)
@@ -83,9 +85,11 @@ class AcaoEntrada(BaseModel):
         self.motivo = self.motivo.strip()
         if self.situacao=='DISPENSADO' and not self.motivo:
             raise ValueError('Informe o motivo para dispensar o acompanhamento.')
+        if self.situacao in ('RECOMPRA_REALIZADA', 'PRODUTO_DESCONTINUADO') and len(self.motivo) < 5:
+            raise ValueError('Informe o pedido ou os códigos e a referência que confirmam o resultado.')
         if self.situacao=='AGUARDANDO_RETORNO' and self.proximo_contato is None:
             raise ValueError('Informe a próxima data de contato.')
-        if self.situacao in ('PENDENTE','DISPENSADO') and self.proximo_contato is not None:
+        if self.situacao not in ('CONTATADO','AGUARDANDO_RETORNO') and self.proximo_contato is not None:
             raise ValueError('Use uma próxima data apenas para Contatado ou Aguardando retorno.')
         if self.proximo_contato is not None and self.proximo_contato<hoje_comercial():
             raise ValueError('A próxima data de contato deve ser hoje ou uma data futura.')

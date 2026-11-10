@@ -21,8 +21,12 @@ def origens_produtos(registros):
             continue
         pedidos = por_produto.setdefault(r.produto_id, {})
         chave = getattr(r, "venda_id", r.data_venda)
-        pedido = pedidos.setdefault(chave, {**origem_pedido(r), "quantidade": 0, "codigos": []})
+        pedido = pedidos.setdefault(chave, {**origem_pedido(r), "quantidade": 0, "valor_itens": 0,
+                                             "precos_disponiveis": True, "codigos": []})
         pedido["quantidade"] += float(r.quantidade or 0)
+        pedido["valor_itens"] += float(r.quantidade or 0) * float(getattr(r, 'preco_unitario', 0) or 0)
+        if getattr(r, 'preco_unitario', None) is None:
+            pedido['precos_disponiveis'] = False
         codigo = getattr(r, "sku_original", r.sku)
         if codigo not in pedido["codigos"]:
             pedido["codigos"].append(codigo)

@@ -6,7 +6,7 @@ from src.backend.app.core.database import Base
 class AcaoAlerta(Base):
     """Eventos de acompanhamento compartilhados pela equipe; não apagam o sinal analítico."""
     __tablename__ = 'acoes_alerta'
-    __table_args__ = (CheckConstraint("situacao IN ('PENDENTE','CONTATADO','AGUARDANDO_RETORNO','DISPENSADO')", name='ck_acao_alerta_situacao'),)
+    __table_args__ = (CheckConstraint("situacao IN ('PENDENTE','CONTATADO','AGUARDANDO_RETORNO','DISPENSADO','RECOMPRA_REALIZADA','PRODUTO_DESCONTINUADO')", name='ck_acao_alerta_situacao'),)
     id = Column(Integer, primary_key=True)
     cliente_id = Column(Integer, ForeignKey('clientes.id'), nullable=False, index=True)
     usuario_id = Column(Integer, ForeignKey('usuarios.id'), nullable=False)

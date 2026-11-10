@@ -42,7 +42,10 @@ def _resultado(carga):
             "modo": resumo.get("modo", "atualizar"), "mes": resumo.get("mes"),
             "excluidos": resumo.get("excluidos", 0), "itens_removidos": resumo.get("itens_removidos", 0),
             "quantidades_reduzidas": resumo.get("quantidades_reduzidas", 0),
-            "desconsiderados_por_tipo": len(resumo.get("pedidos_desconsiderados", []))}
+            "desconsiderados_por_tipo": len(resumo.get("pedidos_desconsiderados", [])),
+            "conferencia_base": resumo.get("conferencia_base"),
+            "valor_arquivo": resumo.get("valor_arquivo"),
+            "inicio_arquivo": resumo.get("inicio"), "fim_arquivo": resumo.get("fim")}
 
 
 @router.get("/historico")
@@ -130,6 +133,10 @@ def _processar(arquivo_cabecalho, arquivo_itens, db, usuario, conferir=False, to
             resumo_carga["pedidos_excluidos"] = auditoria
             resumo_carga["alteracoes_rede"] = resumo.get("alteracoes_rede", [])
             resumo_carga["pedidos_desconsiderados"] = resumo.get("pedidos_desconsiderados", [])
+            from src.backend.app.services.conferencia_carga import conferir_base
+            resumo_carga['conferencia_base'] = conferir_base(db, resumo)
+            resumo_carga['valor_arquivo'] = resumo.get('valor_total')
+            resumo_carga['inicio'], resumo_carga['fim'] = resumo.get('inicio'), resumo.get('fim')
             carga = Importacao(arquivo=os.path.basename(arquivo_cabecalho.filename),
                                 arquivo_itens=os.path.basename(arquivo_itens.filename), usuario=usuario.email,
                                 avisos_json=json.dumps(resultado["avisos"], ensure_ascii=False),

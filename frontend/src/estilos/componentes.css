@@ -721,3 +721,12 @@
     animation: none;
   }
 }
+.preparacao-visita fieldset { display: grid; gap: 1rem; min-width: 0; border: 0; padding: 1rem 0; }
+.preparacao-visita .opcoes-pdf { display: grid; gap: .75rem; }
+.preparacao-visita label { display: grid; gap: .5rem; }
+.preparacao-visita .opcoes-pdf label,
+.preparacao-visita li label { display: flex; align-items: flex-start; gap: .65rem; }
+.preparacao-visita input[type="checkbox"] { flex: 0 0 auto; margin-top: .3rem; }
+.preparacao-visita input:not([type="checkbox"]) { width: 100%; min-width: 0; padding: .8rem; border: 1px solid #d9e1d2; border-radius: .6rem; font: inherit; background: white; }
+.preparacao-visita ul { list-style: none; padding: 0; margin: 0; display: grid; gap: .8rem; }
+.preparacao-visita li { padding: .6rem 0; border-bottom: 1px solid #d9e1d2; }

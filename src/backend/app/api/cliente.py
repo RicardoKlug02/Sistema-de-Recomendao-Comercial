@@ -1,4 +1,6 @@
 from typing import Any, Dict, List
+from pydantic import BaseModel, Field, model_validator
+from fastapi.responses import Response
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -11,6 +13,36 @@ from src.backend.app.services.cliente_service import ClienteService
 from src.backend.app.services.recompra_service import RecompraService
 
 router = APIRouter(prefix="/clientes", tags=["Clientes"])
+
+
+class VisitaEntrada(BaseModel):
+    agrupar_rede: bool = True
+    fabrica_id: int | None = None
+    abandono: bool = True
+    recompra: bool = True
+    mostrar_precos: bool = False
+    produtos_ids: list[int] | None = Field(None, max_length=10000)
+
+    @model_validator(mode='after')
+    def validar(self):
+        if not (self.abandono or self.recompra):
+            raise ValueError('Selecione abandono ou recompra.')
+        if self.produtos_ids == []:
+            raise ValueError('Selecione pelo menos um produto.')
+        return self
+
+
+@router.post('/{cliente_id}/visita.pdf')
+def exportar_visita(cliente_id: int, entrada: VisitaEntrada, db: Session = Depends(get_db),
+                    _: Usuario = Depends(get_usuario_atual)):
+    from src.backend.app.services.visita_service import preparar_visita
+    from src.backend.app.services.pdf_service import pdf_visita
+    dados = preparar_visita(db, cliente_id, entrada)
+    if dados is None:
+        raise HTTPException(404, 'Cliente não encontrado.')
+    return Response(pdf_visita(dados), media_type='application/pdf', headers={
+        'Content-Disposition': f'attachment; filename="preparacao-visita-{cliente_id}.pdf"',
+        'Cache-Control': 'no-store'})
 
 
 @router.get("/busca", response_model=List[ClienteOptionOut])

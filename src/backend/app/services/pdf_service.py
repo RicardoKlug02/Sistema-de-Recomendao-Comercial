@@ -6,6 +6,69 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, LongTable, TableStyle
 
 
+def pdf_visita(dados):
+    saida = BytesIO()
+    doc = SimpleDocTemplate(saida, pagesize=landscape(A4), leftMargin=30, rightMargin=30,
+                            topMargin=30, bottomMargin=38, title='Preparação da visita',
+                            author='Rio Verde Representações')
+    estilos = getSampleStyleSheet()
+    celula = ParagraphStyle('visita-celula', fontName='Helvetica', fontSize=8, leading=11)
+    def p(v):
+        return Paragraph(escape(str(v or '-')).replace('\n', '<br/>'), celula)
+    def data(v):
+        return '/'.join(reversed(str(v).split('-'))) if v else 'Sem histórico'
+    origem = dados['origem']
+    flow = [Paragraph('Rio Verde Representações', estilos['Title']),
+            Paragraph('Preparação da visita', estilos['Heading2']),
+            p(f"Cliente/rede: {dados['cliente']} | Fábrica: {dados['fabrica']}"),
+            p(f"Análise em {data(dados['referencia'])} | Histórico disponível neste escopo: "
+              f"{data(origem.get('inicio'))} a {data(origem.get('fim'))}"),
+            p(f"Escopo: {origem['escopo']} | {len(dados['cadastros'])} cadastro(s) fiscal(is)"),
+            p('Fonte: cabeçalhos e itens importados. Sugestões para avaliação comercial; não constituem pedido.'),
+            Spacer(1, 10)]
+    for secao in dados['secoes']:
+        flow.append(Paragraph(escape(secao['titulo']), estilos['Heading2']))
+        if not secao['itens']:
+            flow.append(p('Nenhum produto para a seleção atual.'))
+            continue
+        titulos = ['Código / produto', 'Fábrica', 'Última compra / quantidade', 'Motivo da indicação', 'Pedido / CNPJ de origem']
+        pesos = [180, 85, 100, 220, 196.89]
+        if dados['mostrar_precos']:
+            titulos.append('Último preço unitário'); pesos = [155, 75, 90, 190, 181.89, 90]
+        linhas = [[p(t) for t in titulos]]
+        for r in secao['itens']:
+            u = r['ultima']
+            valores = [f"{r['sku']}\n{r['nome']}", r['fabrica'],
+                       f"{data(u.get('data'))}\n{u.get('quantidade', 0):g} unidades",
+                       r['motivo'], f"Pedido {u.get('pedido') or '-'}\n{u.get('cliente') or '-'}\n"
+                       f"CNPJ/CPF: {u.get('cnpj_cpf') or '-'}\nCódigos originais: {', '.join(str(c) for c in u.get('codigos', []))}"]
+            if dados['mostrar_precos']:
+                preco = ('R$ '+f"{r['preco']:,.2f}").replace(',', '@').replace('.', ',').replace('@', '.') if r['preco'] is not None else '-'
+                valores.append(preco)
+            linhas.append([p(v) for v in valores])
+        tabela = LongTable(linhas, colWidths=pesos, repeatRows=1, hAlign='LEFT')
+        tabela.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#eaf0e6')),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'), ('TOPPADDING', (0,0), (-1,-1), 7),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 7),
+            ('LINEBELOW', (0,0), (-1,-1), .3, colors.HexColor('#d9e1d2'))]))
+        flow.extend([tabela, Spacer(1, 10)])
+    notas = ['Abandono: no mínimo três datas de compra, pelo menos 60 dias sem compra e intervalo superior a 2,5 vezes o ciclo médio.',
+             'Recompra: pelo menos duas datas de compra; janela a partir de cinco dias antes do ciclo habitual e antes de duas vezes esse ciclo. Restrições e substituições vigentes são aplicadas.',
+             f"{dados['sem_confirmacao']} produtos com recompra não confirmada por pedidos posteriores sem itens foram mantidos fora das listas. Confira as pendências na ficha do cliente.",
+             'O agrupamento por rede utiliza os vínculos cadastrais atuais. Primeira compra significa primeira compra registrada na base.']
+    if dados['mostrar_precos']:
+        notas.append('Preço unitário médio ponderado pela quantidade dos códigos equivalentes no último pedido conhecido. Não representa preço atual ou oferta. Pedidos no mesmo dia são desempatados pelo registro mais recente.')
+    flow.append(Paragraph('Critérios e referências', estilos['Heading2']))
+    for nota in notas:
+        flow.extend([p(nota), Spacer(1, 5)])
+    def rodape(canvas, documento):
+        canvas.setFont('Helvetica', 8)
+        canvas.drawString(30, 19, 'Rio Verde - Uso comercial interno')
+        canvas.drawRightString(landscape(A4)[0]-30, 19, f'Página {documento.page}')
+    doc.build(flow, onFirstPage=rodape, onLaterPages=rodape)
+    return saida.getvalue()
+
+
 def pdf_produtos_rede(dados):
     saida = BytesIO()
     documento = SimpleDocTemplate(saida, pagesize=landscape(A4), rightMargin=30, leftMargin=30,
