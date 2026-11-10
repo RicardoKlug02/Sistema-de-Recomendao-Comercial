@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { obterSessao, salvarSessao, solicitar } from '../../src/servicos/api'
+import { montarCaminho, obterSessao, salvarSessao, solicitar } from '../../src/servicos/api'
 
 const responder = (dados, status = 200) =>
   new Response(JSON.stringify(dados), { status, headers: { 'Content-Type': 'application/json' } })
@@ -81,5 +81,16 @@ describe('solicitar', () => {
     fetch.mockResolvedValue(new Response(new Blob(['%PDF']), { status: 200 }))
     const arquivo = await solicitar('/relatorios/pdf', { formato: 'blob' })
     expect(await arquivo.text()).toBe('%PDF')
+  })
+})
+
+describe('montarCaminho', () => {
+  test('ignora filtros vazios e mantém falso e zero', () => {
+    expect(montarCaminho('/alertas', { tipo: '', vendedor_id: null, fabrica_id: undefined, pagina: 1 })).toBe('/alertas?pagina=1')
+    expect(montarCaminho('/clientes/1', { agrupar_rede: false, limite: 0 })).toBe('/clientes/1?agrupar_rede=false&limite=0')
+  })
+  test('sem filtros devolve o caminho limpo e codifica valores', () => {
+    expect(montarCaminho('/comercial/painel', { mes: '' })).toBe('/comercial/painel')
+    expect(montarCaminho('/comercial/clientes', { termo: 'São José & Cia' })).toBe('/comercial/clientes?termo=S%C3%A3o+Jos%C3%A9+%26+Cia')
   })
 })

@@ -25,8 +25,15 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+}
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 button {
   cursor: pointer;

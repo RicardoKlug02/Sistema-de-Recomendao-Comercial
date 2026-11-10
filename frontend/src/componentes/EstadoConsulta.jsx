@@ -1,12 +1,6 @@
 import Icone from './Icone'
 
-export default function EstadoConsulta({
-  carregando,
-  erro,
-  vazio,
-  mensagem = 'Nenhum resultado encontrado.',
-  aoTentar,
-}) {
+export default function EstadoConsulta({ carregando, erro, vazio, mensagem = 'Nenhum resultado encontrado.', aoTentar }) {
   if (erro)
     return (
       <div className="estado-consulta estado-erro" role="alert">
@@ -14,27 +8,13 @@ export default function EstadoConsulta({
         <div>
           <strong>Não foi possível carregar</strong>
           <p>{erro}</p>
-          {aoTentar && (
-            <button className="botao-secundario" onClick={aoTentar}>
-              Tentar novamente
-            </button>
-          )}
+          {aoTentar && <button className="botao-secundario" onClick={aoTentar}>Tentar novamente</button>}
         </div>
       </div>
     )
   if (carregando)
-    return (
-      <div className="estado-consulta" role="status">
-        <span className="carregador" />
-        <span>Carregando informações…</span>
-      </div>
-    )
+    return <div className="estado-consulta" role="status"><span className="carregador" /><span>Carregando informações…</span></div>
   if (vazio)
-    return (
-      <div className="estado-consulta estado-vazio">
-        <Icone nome="busca" />
-        <p>{mensagem}</p>
-      </div>
-    )
+    return <div className="estado-consulta estado-vazio"><Icone nome="busca" /><p>{mensagem}</p></div>
   return null
 }

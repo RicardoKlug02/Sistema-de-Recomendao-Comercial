@@ -1,37 +1,35 @@
 import { useState } from 'react'
-import CampoFormulario from './CampoFormulario'
-import { entrar, registrar, validarEmail } from '../servicos/autenticacao'
+import CampoFormulario from '../CampoFormulario'
+import useAcao from '../../hooks/useAcao'
+import { entrar, registrar, validarFormulario } from '../../servicos/autenticacao'
 
 export default function FormularioAutenticacao({ modo, aoEntrar, aoNavegar }) {
   const login = modo === 'entrar'
   const [nome, definirNome] = useState('')
   const [email, definirEmail] = useState('')
   const [senha, definirSenha] = useState('')
-  const [erro, definirErro] = useState('')
   const [mensagem, definirMensagem] = useState('')
-  const [enviando, definirEnviando] = useState(false)
+  const envio = useAcao()
+  const enviando = envio.executando
   async function enviar(evento) {
     evento.preventDefault()
-    const validacao = validarEmail(email) || (!senha ? 'Informe a senha.' : '') ||
-      (!login && (nome.trim().length < 2 || senha.length < 6) ? 'Informe nome e senha com pelo menos 6 caracteres.' : '')
-    definirErro(validacao)
+    const validacao = validarFormulario({ cadastro: !login, nome, email, senha })
+    envio.definirErro(validacao)
     if (validacao) return
-    definirEnviando(true)
-    try {
+    await envio.executar(async () => {
       if (login) aoEntrar(await entrar({ email, senha }))
       else {
         const resposta = await registrar({ nome, email, senha })
         definirMensagem(resposta.mensagem)
         definirSenha('')
       }
-    } catch (falha) { definirErro(falha.message) }
-    finally { definirEnviando(false) }
+    })
   }
   return <form className="formulario-autenticacao" onSubmit={enviar} noValidate>
     {!login && <CampoFormulario id="nome" rotulo="Nome" value={nome} onChange={(e) => definirNome(e.target.value)} disabled={enviando} />}
     <CampoFormulario id="email" rotulo="E-mail" type="email" autoComplete="username" value={email} onChange={(e) => definirEmail(e.target.value)} disabled={enviando} />
     <CampoFormulario id="senha" rotulo="Senha" type="password" autoComplete={login ? 'current-password' : 'new-password'} value={senha} onChange={(e) => definirSenha(e.target.value)} disabled={enviando} />
-    {erro && <p role="alert" className="erro-campo">{erro}</p>}
+    {envio.erro && <p role="alert" className="erro-campo">{envio.erro}</p>}
     {mensagem && <p role="status">{mensagem}</p>}
     <button className="botao-principal" disabled={enviando}>{enviando ? 'Aguarde…' : login ? 'Entrar' : 'Solicitar acesso'}</button>
     <button type="button" className="botao-texto" disabled={enviando} onClick={aoNavegar}>{login ? 'Solicitar cadastro' : 'Voltar ao login'}</button>

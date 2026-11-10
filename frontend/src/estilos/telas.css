@@ -96,9 +96,7 @@
   line-height: 1.6;
 }
 .alertas-agrupados summary {
-  cursor: pointer;
   color: var(--verde);
-  padding: 10px 0;
 }
 .alertas-agrupados ul {
   max-height: 320px;
@@ -116,10 +114,6 @@
 .acompanhamento-alerta fieldset {
   display: grid;
   gap: 14px;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  min-width: 0;
 }
 .acompanhamento-alerta label {
   display: grid;
@@ -140,12 +134,6 @@
 }
 
 /* Regras de negócio */
-.campos-regra {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-}
 .campos-regra textarea {
   display: block;
   width: 100%;
@@ -154,7 +142,6 @@
   padding: 10px;
   border: 1px solid #d9e1d2;
   border-radius: 8px;
-  font: inherit;
 }
 .campos-regra > label,
 .campos-regra section > label {
@@ -172,7 +159,6 @@
   border-radius: 8px;
   color: #293b27;
   background: #fbfcf9;
-  font: inherit;
 }
 .campos-regra .opcao-rede {
   display: flex;
@@ -182,8 +168,6 @@
   margin: 4px 8px 4px 0;
 }
 .campos-regra input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
   min-height: 18px;
   margin: 0;
   padding: 0;
@@ -200,10 +184,6 @@
 /* Importação */
 .tela-importacao > .cartao + .cartao {
   margin-top: 22px;
-}
-.tela-importacao button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 .tela-importacao [role='status'] > p {
   font-size: 13px;
@@ -319,11 +299,5 @@
   }
   .estrutura-painel .tabela-fabricas td[data-rotulo='Ritmo de recompra'] {
     grid-column: 1 / -1;
-  }
-}
-@media (max-width: 640px) {
-  .tela-importacao .botao-secundario,
-  .tela-importacao .botao-detalhes {
-    min-height: 44px;
   }
 }

@@ -8,6 +8,15 @@ export function salvarSessao(sessao) {
   if (sessao) sessionStorage.setItem(chave, JSON.stringify(sessao))
   else sessionStorage.removeItem(chave)
 }
+
+export function montarCaminho(caminho, parametros = {}) {
+  const busca = new URLSearchParams()
+  for (const [nome, valor] of Object.entries(parametros))
+    if (valor !== '' && valor !== null && valor !== undefined) busca.set(nome, valor)
+  const texto = busca.toString()
+  return texto ? `${caminho}?${texto}` : caminho
+}
+
 export async function solicitar(caminho, opcoes = {}) {
   const { tempoLimite = 90000, formato = 'json', signal, ...config } = opcoes
   const controlador = new AbortController()
@@ -42,4 +51,14 @@ export async function solicitar(caminho, opcoes = {}) {
     clearTimeout(temporizador)
     signal?.removeEventListener('abort', cancelar)
   }
+}
+
+export async function baixarArquivo(caminho, nomeArquivo, opcoes = {}) {
+  const arquivo = await solicitar(caminho, { ...opcoes, formato: 'blob' })
+  const url = URL.createObjectURL(arquivo)
+  const link = Object.assign(document.createElement('a'), { href: url, download: nomeArquivo })
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

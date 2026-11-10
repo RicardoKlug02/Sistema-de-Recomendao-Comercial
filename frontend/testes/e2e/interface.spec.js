@@ -289,8 +289,8 @@ test('importação exige conferência e confirmação antes de gravar', async ({
   ).toBeDisabled()
   expect(gravacoes).toBe(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy()
-  await page.getByRole('checkbox').check()
-  await expect(page.getByRole('checkbox')).toBeChecked()
+  await page.getByRole('checkbox', { name: /Confirmo que as planilhas/ }).check()
+  await expect(page.getByRole('checkbox', { name: /Confirmo que as planilhas/ })).toBeChecked()
   await page.getByRole('button', { name: 'Confirmar importação' }).click()
   await expect(page.getByRole('region', { name: 'Importar planilhas', exact: true }).getByRole('status')).toContainText(
     '1 pedidos: 1 novos e 0 atualizados; 1 itens importados.',
@@ -300,7 +300,7 @@ test('importação exige conferência e confirmação antes de gravar', async ({
 
 test('erro de API não aparece como faturamento zero', async ({ page }) => {
   await preparar(page)
-  await page.route('**/api/v1/comercial/painel?*', (r) =>
+  await page.route('**/api/v1/comercial/painel*', (r) =>
     r.fulfill({
       status: 503,
       json: { detail: 'Serviço temporariamente indisponível.' },
@@ -348,13 +348,13 @@ test('sincronização mensal confere exclusões e invalida confirmação ao troc
   await expect(page.getByRole('button', { name: 'Confirmar importação' })).toBeDisabled()
   expect(gravacoes).toBe(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy()
-  await page.getByRole('checkbox').check()
+  await page.getByRole('checkbox', { name: /Confirmo que as planilhas/ }).check()
   await page.getByLabel('Mês a sincronizar').fill('2026-07')
   await expect(page.getByRole('heading', { name: 'Confira antes de importar' })).toHaveCount(0)
   await page.getByLabel('Mês a sincronizar').fill('2026-08')
   await page.getByRole('button', { name: 'Conferir planilhas' }).click()
-  await expect(page.getByRole('checkbox')).not.toBeChecked()
-  await page.getByRole('checkbox').check()
+  await expect(page.getByRole('checkbox', { name: /Confirmo que as planilhas/ })).not.toBeChecked()
+  await page.getByRole('checkbox', { name: /Confirmo que as planilhas/ }).check()
   await page.getByRole('button', { name: 'Confirmar importação' }).click()
   await expect(page.getByRole('region', { name: 'Importar planilhas', exact: true }).getByRole('status')).toContainText('1 pedidos excluídos')
   expect(gravacoes).toBe(1)

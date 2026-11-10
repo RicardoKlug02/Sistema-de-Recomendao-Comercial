@@ -1,14 +1,8 @@
-export default function Tabela({ colunas, children }) {
+export default function Tabela({ colunas, className, rotulo, children }) {
   return (
     <div className="rolagem-tabela">
-      <table>
-        <thead>
-          <tr>
-            {colunas.map((coluna) => (
-              <th key={coluna}>{coluna}</th>
-            ))}
-          </tr>
-        </thead>
+      <table className={className} aria-label={rotulo}>
+        <thead><tr>{colunas.map((coluna, indice) => <th key={indice}>{coluna}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>
     </div>

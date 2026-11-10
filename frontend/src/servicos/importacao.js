@@ -1,12 +1,15 @@
 import { solicitar } from './api'
+
 const tamanhoMaximo = 10 * 1024 * 1024
+const tempoLimite = 180000
+
 function validarArquivo(arquivo) {
   if (!arquivo) return 'Selecione as duas planilhas.'
   if (!/\.(xls|xlsx)$/i.test(arquivo.name)) return 'Envie XLS ou XLSX.'
   if (!arquivo.size || arquivo.size > tamanhoMaximo) return 'Cada arquivo deve ter entre 1 byte e 10 MB.'
   return ''
 }
-export async function importarArquivos(cabecalho, itens, token, { modo = 'atualizar', mes = '' } = {}) {
+function montarEnvio(cabecalho, itens, { modo = 'atualizar', mes = '' } = {}) {
   const erro = validarArquivo(cabecalho) || validarArquivo(itens)
   if (erro) throw new Error(erro)
   if (modo === 'sincronizar_mes' && !/^\d{4}-\d{2}$/.test(mes)) throw new Error('Selecione o mês completo a sincronizar.')
@@ -16,11 +19,18 @@ export async function importarArquivos(cabecalho, itens, token, { modo = 'atuali
   if (modo === 'sincronizar_mes') {
     dados.append('modo', modo)
     dados.append('mes', mes)
-    if (token) dados.append('confirmar_sincronizacao', 'true')
   }
-  if (token) {
-    dados.append('token_conferencia', token)
-    dados.append('vendas_comissao', 'true')
-  }
-  return solicitar(token ? '/cargas/excel' : '/cargas/conferir', { method: 'POST', body: dados, tempoLimite: 180000 })
+  return dados
+}
+
+export async function conferirPlanilhas(cabecalho, itens, escopo) {
+  return solicitar('/cargas/conferir', { method: 'POST', body: montarEnvio(cabecalho, itens, escopo), tempoLimite })
+}
+
+export async function confirmarImportacao(cabecalho, itens, tokenConferencia, escopo) {
+  const dados = montarEnvio(cabecalho, itens, escopo)
+  if (escopo?.modo === 'sincronizar_mes') dados.append('confirmar_sincronizacao', 'true')
+  dados.append('token_conferencia', tokenConferencia)
+  dados.append('vendas_comissao', 'true')
+  return solicitar('/cargas/excel', { method: 'POST', body: dados, tempoLimite })
 }
