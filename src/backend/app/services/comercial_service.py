@@ -19,7 +19,7 @@ class ComercialService:
 
     def painel(self, mes=None, vendedor_id=None, fabrica_id=None):
         ref = hoje_comercial()
-        todas = self.db.query(Venda.id, Venda.data_venda, Venda.cliente_id, Venda.fabrica_id, Venda.vendedor_id, Venda.valor_total).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
+        todas = self.db.query(Venda.id, Venda.data_venda, Venda.cliente_id, Venda.fabrica_id, Venda.vendedor_id, Venda.valor_total, Venda.nova_compra).execution_options(incluir_ajustes_comissionados=True).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
         fiscal_por_venda = {v.id: v.cliente_id for v in todas}
         todas = [SimpleNamespace(**{**v._mapping, "cliente_id": self.identidade.id(v.cliente_id)}) for v in todas]
         mes = mes or (todas[-1].data_venda.strftime("%Y-%m") if todas else ref.strftime("%Y-%m"))
@@ -34,12 +34,16 @@ class ComercialService:
         primeira, primeira_fabrica, ultima, reativados = {}, {}, {}, set()
         ids_vendas = {v.id for v in vendas}
         for venda in todas:
+            if not venda.nova_compra:
+                continue
             primeira.setdefault(venda.cliente_id, venda)
             primeira_fabrica.setdefault((venda.cliente_id, venda.fabrica_id), venda)
             if venda.id in ids_vendas and venda.cliente_id in ultima and (venda.data_venda - ultima[venda.cliente_id]).days >= 90:
                 reativados.add(venda.cliente_id)
             ultima[venda.cliente_id] = venda.data_venda
-        atendidos = {v.cliente_id for v in vendas}
+        compras = [v for v in vendas if v.nova_compra]
+        ajustes = [v for v in vendas if not v.nova_compra]
+        atendidos = {v.cliente_id for v in compras}
         aberturas = [v for v in primeira_fabrica.values() if v.id in ids_vendas]
         novos = sum(v.id in ids_vendas for v in primeira.values())
         ids_com_itens = {r[0] for r in self.db.query(ItemVenda.venda_id).filter(ItemVenda.venda_id.in_([v.id for v in vendas])).distinct()}
@@ -70,11 +74,13 @@ class ComercialService:
                          "valor": round(float(r.valor), 2)} for r in linhas]
         meses = [(inicio - relativedelta(months=i)).strftime("%Y-%m") for i in range(11, -1, -1)]
         return {"mes": mes, "indicadores": {
-            "venda_total": round(total, 2), "pedidos_emitidos": len(vendas),
-            "clientes_atendidos": len(atendidos), "ticket_medio": round(total / len(vendas), 2) if vendas else 0,
+            "venda_total": round(total, 2), "pedidos_emitidos": len(compras),
+            "ajustes_comissionados_valor": round(sum(v.valor_total for v in ajustes), 2),
+            "ajustes_comissionados_registros": len(ajustes),
+            "clientes_atendidos": len(atendidos), "ticket_medio": round(sum(v.valor_total for v in compras) / len(compras), 2) if compras else 0,
             "clientes_novos": novos, "aberturas_cliente_fabrica": len(aberturas),
             "clientes_reativados": len(reativados),
-            "pedidos_sem_itens": sum(v.id not in ids_com_itens for v in vendas)},
+            "pedidos_sem_itens": sum(v.id not in ids_com_itens for v in compras)},
             "faturamento_mensal": [{"mes": m, "valor": round(mensal[m], 2)} for m in meses],
             "clientes": [{"id": c, "nome": self.identidade.nome(c), "valor": round(valor, 2)}
                          for c, valor in sorted(fat_clientes.items(), key=lambda p: p[1], reverse=True)[:5]],
@@ -91,7 +97,8 @@ class ComercialService:
 
     def alertas(self, vendedor_id=None, fabrica_id=None):
         ref = hoje_comercial()
-        vendas = self.db.query(Venda.id, Venda.cliente_id, Venda.fabrica_id, Venda.data_venda, Venda.vendedor_id).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
+        vendas = self.db.query(Venda.id, Venda.numero_pedido, Venda.cliente_id, Venda.fabrica_id, Venda.data_venda, Venda.vendedor_id).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
+        originais = {v.id: v for v in vendas}
         vendas = [SimpleNamespace(**{**v._mapping, "cliente_id": self.identidade.id(v.cliente_id)}) for v in vendas]
         regras = MotorRegras(self.db,self.identidade)
         vendas = [v for v in vendas if not regras.bloqueada(v.cliente_id,v.fabrica_id,ref)]
@@ -126,6 +133,7 @@ class ComercialService:
                               "descricao": descricao, "dias": dias, "prioridade": prioridade,
                               "fabrica_id": fabrica_id, "produto_id": produto_id,
                               "vendedor_id": regras.vendedor(cliente_id,fabrica_id,ref),
+                              "_evidencia_id": venda.id,
                               "referencia": venda.data_venda.isoformat()})
         for cid, historico in por_cliente.items():
             ultima = historico[-1]
@@ -161,4 +169,17 @@ class ComercialService:
             a['assinatura'] = assinaturas[a['cliente_id']]
         resultado = [a for a in resultado if (vendedor_id is None or a['vendedor_id']==vendedor_id)
                      and (filtro_fabrica is None or (a['fabrica_id']==filtro_fabrica if a['fabrica_id'] is not None else a['cliente_id'] in atendidos_fabrica))]
+        # Consulta os documentos somente dos pedidos efetivamente usados como evidência.
+        evidencia = {a['id']: originais[a.pop('_evidencia_id')] for a in resultado}
+        fiscais = {c.id: c for c in self.db.query(Cliente).filter(Cliente.id.in_(
+            {v.cliente_id for v in evidencia.values()}))}
+        for a in resultado:
+            v = evidencia.get(a['id'])
+            if v:
+                c = fiscais[v.cliente_id]
+                a['origem'] = {'fonte': 'Itens dos pedidos importados' if a['produto_id'] else 'Cabeçalhos dos pedidos importados',
+                    'referencia': ref.isoformat(), 'rede': self.identidade.clientes[a['cliente_id']].grupo_economico,
+                    'pedidos': [{'venda_id': v.id, 'pedido': v.numero_pedido, 'data': v.data_venda.isoformat(),
+                                 'cliente_id': c.id, 'cliente': c.razao_social, 'cnpj_cpf': c.cnpj_cpf,
+                                 'fabrica': fabricas[v.fabrica_id].nome_fantasia}]}
         return sorted(resultado, key=lambda a: (a["prioridade"], -a["dias"], a["cliente_id"]))

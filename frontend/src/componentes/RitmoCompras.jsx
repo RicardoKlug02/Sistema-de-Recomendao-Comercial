@@ -1,5 +1,6 @@
 import Cartao from './Cartao'
 import ListaProdutos from './ListaProdutos'
+import OrigemInformacao from './OrigemInformacao'
 import { formatarMoeda } from '../servicos/formatacao'
 import { correspondeVariacao } from '../servicos/busca'
 
@@ -15,7 +16,7 @@ const data = (v) => v.split('-').reverse().join('/')
 const explicacoes = {
   HISTORICO_INSUFICIENTE: 'Histórico insuficiente',
   SEM_BASE_COMPARACAO: 'Sem base de comparação',
-  ITENS_INCOMPLETOS: 'Há pedidos sem itens nesta fábrica',
+  ITENS_INCOMPLETOS: 'Há pedidos sem itens registrados na base nesta fábrica',
 }
 function variacao(metrica) {
   return metrica.variacao_pct === null ? explicacoes[metrica.status] || '—'
@@ -36,7 +37,7 @@ export default function RitmoCompras({ ritmo, produtos }) {
     {produtos.length ? <ListaProdutos produtos={produtos} inicial={10} incremento={10}
       situacoes={variacoes} filtrarSituacao={correspondeVariacao} rotuloSituacao="Variação nas compras" todasSituacoes="Todas as variações"
       renderizarLista={(visiveis) => <div className="rolagem-tabela"><table aria-label="Comparação de quantidades por produto"><thead><tr><th>Produto</th><th>Média habitual (un.)</th><th>Últimos 30 dias (un.)</th><th>Variação</th></tr></thead>
-      <tbody>{visiveis.map((p) => <tr key={p.produto_id}><th>{p.fabrica} · Código {p.sku}<br /><span>{p.nome}</span></th>
+      <tbody>{visiveis.map((p) => <tr key={p.produto_id}><th>{p.fabrica} · Código {p.sku}<br /><span>{p.nome}</span><OrigemInformacao origem={p.origem} /><OrigemInformacao pedidos={p.pedidos_sem_itens} titulo="Ver pedidos com itens ausentes na base" /></th>
         <td className="valor-numerico">{p.status === 'ITENS_INCOMPLETOS' ? '—' : numero(p.media_habitual)}</td><td className="valor-numerico">{p.status === 'ITENS_INCOMPLETOS' ? '—' : numero(p.recente)}</td><td className="valor-numerico">{variacao(p)}</td></tr>)}</tbody>
     </table></div>} /> : <p>Sem histórico de itens nesses períodos para comparar quantidades.</p>}
     <p>Pedidos sem itens entram no valor e no número de pedidos. Se houver pedidos sem itens de uma fábrica nos períodos comparados, as quantidades dos seus produtos não são comparadas.</p>

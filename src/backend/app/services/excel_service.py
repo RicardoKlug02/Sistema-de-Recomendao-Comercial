@@ -91,7 +91,7 @@ class ExcelService:
 
     def _limpar_excel_cabecalho(self, caminho_arquivo, permitir_vazio=False):
         df = self._ler_tabela(caminho_arquivo)
-        obrigatorias = {"pedido", "data", "fabrica", "cnpj_cpf", "valor_total"}
+        obrigatorias = {"pedido", "data", "fabrica", "cnpj_cpf", "valor_total", "tipo_pedido"}
         faltantes = obrigatorias - set(df.columns)
         if faltantes:
             raise ValueError("Colunas obrigatórias ausentes: " + ", ".join(sorted(faltantes)))
@@ -186,16 +186,33 @@ class ExcelService:
         chaves = set()
         pedidos_fabricas = {}
         cabecalhos = []
+        desconsiderados = []
+        chaves_desconsideradas = set()
+        redes_por_documento = {}
         hoje = hoje_comercial()
         for linha, row in df_cab.iterrows():
             pedido = identificador(row["pedido"])
-            if "tipo_pedido" in row and normalizar_coluna(row["tipo_pedido"]) not in {"venda", "pedido_de_venda"}:
-                raise ValueError(f"Pedido {pedido}: somente pedidos do tipo Venda são permitidos. Confira o filtro do relatório.")
+            if "tipo_pedido" in row:
+                tipo = texto(row['tipo_pedido'])
+                if not tipo:
+                    raise ValueError(f"Pedido {pedido}: informe o tipo do pedido. Não é possível confirmar que é uma venda.")
+                if normalizar_coluna(tipo) not in {"venda", "pedido_de_venda"}:
+                    desconsiderados.append({'pedido': pedido, 'fabrica': texto(row.get('fabrica')),
+                                            'cliente': texto(row.get('cliente')), 'tipo': tipo})
+                    chaves_desconsideradas.add((texto(row.get('fabrica')).casefold(), pedido))
+                    continue
             fabrica = texto(row.get("fabrica"))
             doc = re.sub(r"\D", "", texto(row.get("cnpj_cpf")))
             if not pedido or not fabrica or len(doc) not in (11, 14):
                 raise ValueError(f"Pedido na linha {linha + 1}: informe número, fábrica e CNPJ/CPF com 11 ou 14 dígitos.")
             chave = (fabrica.casefold(), pedido)
+            rede = texto(row.get('rede'))
+            if rede:
+                from src.backend.app.services.identidade_cliente import normalizar_rede
+                rede_anterior = redes_por_documento.setdefault(doc, rede)
+                if normalizar_rede(rede_anterior) != normalizar_rede(rede):
+                    raise ValueError(f"Pedido {pedido}: o mesmo CNPJ/CPF tem redes diferentes na planilha "
+                                     f"({rede_anterior} e {rede}). Corrija o cadastro antes de importar.")
             if chave in chaves:
                 raise ValueError(f"Pedido {pedido} duplicado na mesma fábrica.")
             chaves.add(chave)
@@ -221,9 +238,17 @@ class ExcelService:
             if valor < 0:
                 raise ValueError(f"Pedido {pedido}: valor total negativo.")
             cabecalhos.append((row, pedido, fabrica, doc, data, valor))
+        self.pedidos_desconsiderados = desconsiderados
+        if not cabecalhos and not periodo:
+            raise ValueError('A carga não contém vendas: somente pedidos do tipo Venda são permitidos. Nenhum registro foi salvo.')
         grupos, ignorados = {}, 0
         for _, item in df_prod.iterrows():
             pedido = identificador(item["pedido"])
+            fabrica_explicita = texto(item.get('fabrica')).casefold()
+            if ((fabrica_explicita, pedido) in chaves_desconsideradas or
+                (not fabrica_explicita and pedido not in pedidos_fabricas
+                 and any(p == pedido for _, p in chaves_desconsideradas))):
+                continue
             fabricas = pedidos_fabricas.get(pedido)
             if not fabricas:
                 ignorados += 1
@@ -250,7 +275,9 @@ class ExcelService:
         if not periodo:
             return []
         chaves = {(c[2].casefold(), c[1]) for c in cabecalhos}
+        chaves |= {(p['fabrica'].casefold(), p['pedido']) for p in self.pedidos_desconsiderados}
         return [v for v, fabrica in self.db.query(Venda, Fabrica.nome_fantasia)
+                .execution_options(incluir_vendas_excluidas=True)
                 .join(Fabrica, Fabrica.id == Venda.fabrica_id)
                 .filter(Venda.data_venda >= periodo[0], Venda.data_venda < periodo[1]).all()
                 if (fabrica.casefold(), v.numero_pedido) not in chaves]
@@ -258,23 +285,38 @@ class ExcelService:
     def conferir(self, df_cab, df_prod, modo="atualizar", mes=None):
         cabecalhos, grupos, ignorados = self._preparar_carga(df_cab, df_prod, modo, mes)
         fabricas = {f.id: f.nome_fantasia.casefold() for f in self.db.query(Fabrica).all()}
-        numeros = {c[1] for c in cabecalhos}
+        numeros = {c[1] for c in cabecalhos} | {r['pedido'] for r in self.pedidos_desconsiderados}
         existentes = {(fabricas[v.fabrica_id], v.numero_pedido): v for v in
-                      self.db.query(Venda).filter(Venda.numero_pedido.in_(numeros)).all()}
+                      self.db.query(Venda).execution_options(incluir_vendas_excluidas=True).filter(Venda.numero_pedido.in_(numeros)).all()}
         itens_anteriores = {}
         ausentes = self._pedidos_ausentes(cabecalhos, modo, mes)
         ids = [v.id for v in existentes.values()] + [v.id for v in ausentes]
         for item in self.db.query(ItemVenda).filter(ItemVenda.venda_id.in_(ids)).order_by(ItemVenda.id):
             itens_anteriores.setdefault(item.venda_id, []).append(item)
         registros, estado = [], []
+        clientes = {c.cnpj_hash: c for c in self.db.query(Cliente) if c.cnpj_hash}
+        redes_efetivas = {}
+        alteracoes_rede = {}
+        for row, _, _, doc, _, _ in cabecalhos:
+            cadastro = clientes.get(gerar_blind_index(doc))
+            anterior = cadastro.grupo_economico if cadastro else None
+            rede = texto(row.get('rede')) or anterior
+            if rede:
+                redes_efetivas[doc] = rede
+            else:
+                redes_efetivas.setdefault(doc, None)
+            if texto(row.get('rede')) and rede != anterior:
+                alteracoes_rede[doc] = {'cliente': texto(row.get('cliente')), 'cnpj_cpf': doc,
+                                       'rede_anterior': anterior, 'rede_nova': rede}
         atualizados = sem_itens = total_itens = removidos = reduzidos = 0
         produtos = {p.id: p.sku for p in self.db.query(Produto).all()}
         def registrar_estado(venda):
             anteriores = itens_anteriores.get(venda.id, [])
             estado.append([venda.id, venda.cliente_id, venda.vendedor_id, str(venda.data_venda), venda.valor_total,
+                           venda.classificacao, venda.considerar_analises,
                            [[i.id, i.produto_id, i.quantidade, i.preco_unitario] for i in anteriores]])
         por_fabrica = {}
-        for row, pedido, fabrica, _, data, valor in cabecalhos:
+        for row, pedido, fabrica, doc, data, valor in cabecalhos:
             chave = (fabrica.casefold(), pedido)
             venda = existentes.get(chave)
             itens = grupos.get(chave, [])
@@ -296,9 +338,14 @@ class ExcelService:
                         removidos += sku not in novos
                     reduzidos += sum(sku in novos and novos[sku] < qtd for sku, qtd in antigos.items())
             registros.append({"pedido": pedido, "fabrica": fabrica, "cliente": texto(row.get("cliente")),
+                              "cnpj_cpf": doc, "rede": redes_efetivas[doc],
                               "data": data.isoformat(), "valor": valor, "itens": len(itens),
                               "acao": "Atualizar" if venda else "Adicionar"})
         excluidos = []
+        for p in self.pedidos_desconsiderados:
+            existente = existentes.get((p['fabrica'].casefold(), p['pedido']))
+            if existente:
+                registrar_estado(existente)
         for venda in ausentes:
             registrar_estado(venda)
             anteriores = itens_anteriores.get(venda.id, [])
@@ -309,8 +356,20 @@ class ExcelService:
         from src.backend.app.models import Importacao
         ultima = self.db.query(Importacao.id).order_by(Importacao.id.desc()).first()
         import json
-        assinatura = hashlib.sha256(json.dumps([sorted(estado), ultima[0] if ultima else 0], sort_keys=True).encode()).hexdigest()
+        estado_redes = sorted((doc, clientes[gerar_blind_index(doc)].grupo_economico
+                               if gerar_blind_index(doc) in clientes else None) for doc in redes_efetivas)
+        assinatura = hashlib.sha256(json.dumps([sorted(estado), ultima[0] if ultima else 0, estado_redes], sort_keys=True).encode()).hexdigest()
         avisos = []
+        if self.pedidos_desconsiderados:
+            avisos.append(f"{len(self.pedidos_desconsiderados)} pedidos de outros tipos foram desconsiderados, "
+                          "junto com seus itens. Apenas vendas entram nos totais desta carga.")
+        sem_rede = sum(not rede for rede in redes_efetivas.values())
+        if sem_rede:
+            avisos.append(f"{sem_rede} cadastros fiscais ficarão sem rede e serão analisados individualmente. "
+                          "Confira a coluna Rede caso pertençam a um cliente comercial com vários CNPJs.")
+        if alteracoes_rede:
+            avisos.append(f"{len(alteracoes_rede)} cadastros terão a rede preenchida ou alterada. "
+                          "O vínculo também reagrupa todos os pedidos anteriores desses cadastros.")
         if ignorados:
             avisos.append(f"{ignorados} linhas de itens sem pedido correspondente serão ignoradas. Confira o período dos arquivos.")
         if sem_itens and modo == "atualizar":
@@ -334,6 +393,9 @@ class ExcelService:
                 "inicio": (min(datas) if datas else periodo[0]).isoformat(),
                 "fim": (max(datas) if datas else date.fromordinal(periodo[1].toordinal() - 1)).isoformat(), "avisos": avisos,
                 "fabricas": [{"nome": f, "valor": round(v, 2)} for f, v in por_fabrica.items()],
+                "alteracoes_rede": list(alteracoes_rede.values()),
+                "pedidos_desconsiderados": self.pedidos_desconsiderados,
+                "pedidos_sem_itens_detalhes": [p for p in registros if p['itens'] == 0][:100],
                 "pedidos": registros[:100], "estado": assinatura}
 
     def _validar_e_salvar(self, df_cab, df_prod, commit=True, modo="atualizar", mes=None):
@@ -385,7 +447,7 @@ class ExcelService:
                     produtos[(fid, sku)] = produto
         self.db.flush()
         numeros = {c[1] for c in cabecalhos}
-        vendas = {(v.fabrica_id, v.numero_pedido): v for v in self.db.query(Venda).filter(Venda.numero_pedido.in_(numeros)).all()}
+        vendas = {(v.fabrica_id, v.numero_pedido): v for v in self.db.query(Venda).execution_options(incluir_vendas_excluidas=True).filter(Venda.numero_pedido.in_(numeros)).all()}
         adicionados = atualizados = sem_itens = 0
         cargas = []
         for row, pedido, nome_fabrica, doc, data, valor in cabecalhos:
@@ -425,6 +487,8 @@ class ExcelService:
             avisos.append(f"{ignorados} linhas de itens sem cabeçalho correspondente não foram importadas. Confira os filtros dos relatórios.")
         if sem_itens:
             avisos.append(f"{sem_itens} pedidos sem itens na carga: mantidos no faturamento. As análises de mix utilizam somente itens conhecidos.")
+        if self.pedidos_desconsiderados:
+            avisos.append(f"{len(self.pedidos_desconsiderados)} pedidos de outros tipos foram desconsiderados, junto com seus itens.")
         if modo == "sincronizar_mes":
             avisos.append(f"Mês {mes} sincronizado: {len(ausentes)} pedidos ausentes excluídos. Outros meses preservados.")
         if commit:

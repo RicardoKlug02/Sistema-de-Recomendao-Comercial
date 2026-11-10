@@ -270,10 +270,13 @@ export default function VisaoGeral({
             </Cartao>
           </div>
           <p className="nota-painel">
+            Fonte: cabeçalhos dos pedidos importados para os valores e a quantidade de pedidos; itens importados para o ranking de produtos. Os filtros de mês, vendedor e fábrica são aplicados aos indicadores. Clientes são agrupados pela rede cadastrada atualmente.{' '}
+            Bonificações e duplicidades revisadas são desconsideradas. Ajustes comissionados entram no valor, mas não contam como compra, cliente atendido ou abertura e não entram no ticket médio.{' '}
+            {indicadores.ajustes_comissionados_registros > 0 && <>Neste mês: {indicadores.ajustes_comissionados_registros} ajuste(s), no valor de {formatarMoeda(indicadores.ajustes_comissionados_valor)}.{' '}</>}
             Novos clientes e aberturas por fábrica representam a primeira compra
             registrada na base. Importar históricos anteriores pode alterar as
             datas e as classificações. Novos clientes também contam como aberturas por fábrica.{' '}
-            {indicadores.pedidos_sem_itens} pedidos sem itens: seus valores
+            {indicadores.pedidos_sem_itens} pedidos sem itens registrados na base: seus valores
             entram no faturamento, mas não no ranking de produtos.
           </p>
         </>

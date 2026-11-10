@@ -1,6 +1,35 @@
 """Pedidos sem itens não confirmam nem descartam a recompra de um código."""
 
 
+def origem_pedido(registro):
+    """Evidência fiscal, sem confundir ausência na base com venda direta."""
+    return {
+        "venda_id": getattr(registro, "venda_id", None),
+        "pedido": getattr(registro, "numero_pedido", None),
+        "data": registro.data_venda.isoformat(),
+        "cliente_id": getattr(registro, "cliente_id", None),
+        "cliente": getattr(registro, "cliente_nome", None),
+        "cnpj_cpf": getattr(registro, "cnpj_cpf", None),
+        "fabrica": getattr(registro, "fabrica_nome", None),
+    }
+
+
+def origens_produtos(registros):
+    por_produto = {}
+    for r in registros:
+        if r.produto_id is None:
+            continue
+        pedidos = por_produto.setdefault(r.produto_id, {})
+        chave = getattr(r, "venda_id", r.data_venda)
+        pedido = pedidos.setdefault(chave, {**origem_pedido(r), "quantidade": 0, "codigos": []})
+        pedido["quantidade"] += float(r.quantidade or 0)
+        codigo = getattr(r, "sku_original", r.sku)
+        if codigo not in pedido["codigos"]:
+            pedido["codigos"].append(codigo)
+    return {pid: {"fonte": "Itens dos pedidos importados", "pedidos": list(pedidos.values())}
+            for pid, pedidos in por_produto.items()}
+
+
 def ultimos_pedidos_sem_itens(registros):
     ultimos = {}
     for r in registros:

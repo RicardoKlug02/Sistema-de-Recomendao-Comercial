@@ -127,6 +127,8 @@ def test_dossie_agrupa_rede_incluindo_pedidos_sem_itens(db_session):
 
 def xlsx(df):
     arquivo = io.BytesIO()
+    if 'cnpj_cpf' in df and 'tipo_pedido' not in df:
+        df = df.assign(tipo_pedido='Venda')
     df.to_excel(arquivo, index=False)
     return arquivo.getvalue()
 
@@ -261,6 +263,7 @@ def test_colunas_do_relatorio_erp_sao_reconhecidas(db_session, tmp_path):
         "Data de emissão": "01/08/2026", "Pedido": "1", "Representada": "Fábrica A",
         "Razão Social": "Cliente Alfa", "CNPJ/CPF": "11111111000111",
         "Total em produtos": "R$ 100,00", "Rede de clientes": "Rede Alfa", "Vendedor(a)": "Ana",
+        "Tipo do pedido": "Venda",
     }]).to_excel(arquivo, index=False)
     service = ExcelService(db_session)
     cab = service._limpar_excel_cabecalho(arquivo)

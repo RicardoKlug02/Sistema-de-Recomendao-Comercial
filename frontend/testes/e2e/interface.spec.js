@@ -107,6 +107,7 @@ async function preparar(page, perfil = 'admin') {
     else if (caminho === '/auth/usuarios')
       body = [{ id: 1, ...usuario, aprovado: true }]
     else if (caminho === '/cargas/historico') body = []
+    else if (caminho === '/cargas/pedidos') body = { total: 0, itens: [] }
     else
       return route.fulfill({
         status: 500,
@@ -127,6 +128,56 @@ async function entrar(page) {
     page.getByRole('list', { name: 'Faturamento por mês' }),
   ).toBeVisible()
 }
+
+test('gestor registra ajuste comissionado com motivo sem tratar como nova compra', async ({ page }) => {
+  await preparar(page)
+  let salvo = null
+  await page.route('**/api/v1/cargas/pedidos?*', (route) => route.fulfill({ json: {
+    total: salvo ? 0 : 1, itens: salvo ? [] : [{ id: 9, pedido: '31781', data: '2026-02-19', cliente: 'Orion',
+      cnpj_cpf: '11111111000111', rede: 'Orion', fabrica: 'Cibra', valor: 100,
+      classificacao: 'NAO_REVISADO', considerar_analises: true, versao: 0 }],
+  } }))
+  await page.route('**/api/v1/cargas/pedidos/9/historico', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/cargas/pedidos/9/revisao', async (route) => {
+    salvo = route.request().postDataJSON()
+    await route.fulfill({ json: { id: 9, versao: 1, classificacao: salvo.classificacao, considerar_analises: true, nova_compra: false } })
+  })
+  await entrar(page)
+  await page.getByRole('link', { name: 'Importação', exact: true }).click()
+  const secao = page.getByRole('region', { name: 'Revisão de pedidos importados' })
+  await secao.getByRole('button', { name: 'Revisar e ver histórico do pedido 31781' }).click()
+  await secao.getByRole('combobox', { name: 'Classificação', exact: true }).selectOption('AJUSTE_COMISSIONADO')
+  await secao.getByLabel('Motivo da decisão').fill('Comissão paga sem nova compra, conforme conferência')
+  await secao.getByRole('button', { name: 'Salvar revisão', exact: true }).click()
+  await expect(secao.getByText('Revisão salva. As análises usarão a nova classificação.', { exact: true })).toBeVisible()
+  expect(salvo.classificacao).toBe('AJUSTE_COMISSIONADO')
+  expect(salvo.versao).toBe(0)
+})
+
+test('ficha permite conferir o pedido e CNPJ que impedem confirmar a recompra', async ({ page }) => {
+  await preparar(page)
+  const pedido = { venda_id: 9, pedido: '37182', data: '2026-10-16', cliente: 'Orion SC',
+    cnpj_cpf: '11111111000111', fabrica: 'Cibra' }
+  await page.route('**/api/v1/clientes/1?*', (route) => route.fulfill({ json: {
+    ...cliente, cliente_id: 1, grupo_economico: 'Orion', clientes_agrupados: 2, cadastros_fiscais: [],
+    valor_comprado: 100, pedidos_emitidos: 3, ritmo_compras: null, comparacao_produtos: [],
+    produtos_em_abandono: [], sugestoes_expansao_mix: [], sugestoes_fabricas: [],
+    resumo_fabricas: [], sugestoes_reposicao: [],
+    origem: { fonte: 'Cabeçalhos e itens dos pedidos importados', referencia: '2026-11-09',
+      escopo: 'Rede comercial', inicio: '2026-01-01', fim: '2026-10-16', pedidos_sem_itens: [pedido] },
+    produtos_sem_confirmacao: [{ produto_id: 1, sku: '100', nome: 'Produto Exemplo', fabrica: 'Cibra',
+      ultima_compra_conhecida: '2026-01-01', pedidos_sem_itens: [pedido] }],
+  } }))
+  await entrar(page)
+  await page.getByRole('link', { name: 'Clientes', exact: true }).click()
+  await page.getByRole('button', { name: 'Abrir ficha', exact: true }).click()
+  await expect(page.getByText(/Rede cadastrada: Orion/)).toBeVisible()
+  const secao = page.getByRole('region', { name: 'Produtos com recompra não confirmada' })
+  await secao.getByText('Ver pedidos que impedem confirmar a recompra (1)', { exact: true }).click()
+  await expect(secao.getByRole('cell', { name: '37182', exact: true })).toBeVisible()
+  await expect(secao.getByRole('cell', { name: '11111111000111', exact: true })).toBeVisible()
+  await expect(secao.getByRole('cell', { name: '16/10/2026', exact: true })).toBeVisible()
+})
 
 test('painel responsivo, filtros reais e sessão após recarregar', async ({
   page,

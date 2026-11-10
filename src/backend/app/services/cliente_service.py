@@ -17,7 +17,9 @@ from src.backend.app.models.item_venda import ItemVenda
 from src.backend.app.models.produto import Produto
 from src.backend.app.models.venda import Venda
 from src.backend.app.services.colaborativo_service import ColaborativoService
-from src.backend.app.services.evidencia_produtos import ultimos_pedidos_sem_itens, recompra_nao_confirmada
+from src.backend.app.services.evidencia_produtos import (
+    ultimos_pedidos_sem_itens, recompra_nao_confirmada, origem_pedido, origens_produtos,
+)
 
 
 class ClienteService:
@@ -71,8 +73,13 @@ class ClienteService:
         registros = (
             self.db.query(
                 Venda.id.label("venda_id"),
+                Venda.numero_pedido,
+                Venda.cliente_id,
+                Cliente.razao_social.label("cliente_nome"),
+                Cliente.cnpj_cpf,
                 Venda.data_venda,
                 Venda.valor_total,
+                Venda.nova_compra,
                 Fabrica.id.label("fabrica_id"),
                 Fabrica.nome_fantasia.label("fabrica_nome"),
                 ItemVenda.produto_id,
@@ -80,6 +87,9 @@ class ClienteService:
                 Produto.sku,
                 Produto.nome.label("produto_nome"),
             )
+            .select_from(Venda)
+            .execution_options(incluir_ajustes_comissionados=True)
+            .join(Cliente, Cliente.id == Venda.cliente_id)
             .outerjoin(ItemVenda, ItemVenda.venda_id == Venda.id)
             .outerjoin(Produto, Produto.id == ItemVenda.produto_id)
             .join(Fabrica, Fabrica.id == Venda.fabrica_id)
@@ -90,10 +100,21 @@ class ClienteService:
         )
 
         regras = MotorRegras(self.db)
-        registros_comerciais = regras.registros(registros,cliente.id,ref,consolidar=agrupar_rede)
+        registros_comerciais = regras.registros([r for r in registros if r.nova_compra],cliente.id,ref,consolidar=agrupar_rede)
         vendas_unicas = list({r.venda_id: r for r in registros}.values())
         ritmo = calcular_ritmo(vendas_unicas, ref)
         base_info = {
+            "origem": {
+                "fonte": "Cabeçalhos e itens dos pedidos importados",
+                "referencia": ref.isoformat(),
+                "escopo": "Rede comercial" if agrupar_rede else "Cadastro fiscal",
+                "rede": (cliente.grupo_economico or '').strip() or None,
+                "fabrica_id": fabrica_id,
+                "inicio": min((r.data_venda for r in registros), default=None),
+                "fim": max((r.data_venda for r in registros), default=None),
+                "pedidos_sem_itens": [origem_pedido(r) for r in vendas_unicas if r.nova_compra and r.produto_id is None],
+                "ajustes_comissionados": [origem_pedido(r) for r in vendas_unicas if not r.nova_compra],
+            },
             "cliente_id": cliente.id,
             "razao_social": (cliente.grupo_economico or cliente.razao_social) if agrupar_rede else cliente.razao_social,
             "cadastros_fiscais": [{"id": c.id, "razao_social": c.razao_social, "cnpj_cpf": c.cnpj_cpf} for c in self.db.query(Cliente).filter(Cliente.id.in_(cliente_ids)).order_by(Cliente.id)],
@@ -104,7 +125,7 @@ class ClienteService:
             "ritmo_compras": ritmo,
             "comparacao_produtos": comparar_produtos(registros_comerciais, ref, ritmo["historico_suficiente"]),
             "valor_comprado": round(sum({r.venda_id: r.valor_total for r in registros}.values()), 2),
-            "pedidos_emitidos": len({r.venda_id for r in registros}),
+            "pedidos_emitidos": len({r.venda_id for r in registros if r.nova_compra}),
             "produtos_sem_confirmacao": self._analisar_produtos_sem_confirmacao(registros_comerciais),
         }
 
@@ -121,7 +142,7 @@ class ClienteService:
 
         recomendacoes = self.colaborativo.recomendar_produtos_cliente(cliente_id, top_n_produtos=10, fabrica_id=fabrica_id, ref_date=ref)
         recomendacoes = [r for r in recomendacoes if not regras.bloqueada(cliente.id,r['fabrica_id'],ref,consolidar=agrupar_rede)]
-        compradas = {r.fabrica_id for r in registros}
+        compradas = {r.fabrica_id for r in registros if r.nova_compra}
         sugestoes_fabricas = {}
         for sugestao in recomendacoes:
             if sugestao["fabrica_id"] not in compradas:
@@ -191,6 +212,9 @@ class ClienteService:
                                           f"Recompra atrasada há {dias_sem_comprar - ciclo_medio} dias"
                                           if dias_sem_comprar > ciclo_medio else "Dentro do ciclo de compra"),
                     "status_gatilho": gatilho,
+                    "origem": {"fonte": "Cabeçalhos dos pedidos importados",
+                               "pedidos": list({r.venda_id: origem_pedido(r) for r in registros
+                                                 if r.fabrica_id == fid and r.data_venda == ultima_compra}.values())},
                     "risco_bloqueio_neste_mes": (
                         limite_90d.month == ref.month and limite_90d.year == ref.year
                     ),
@@ -201,6 +225,7 @@ class ClienteService:
         return status_fabricas
 
     def _analisar_reposicao(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        origens = origens_produtos(registros)
         sem_itens = ultimos_pedidos_sem_itens(registros)
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "compras": []})
         for r in registros:
@@ -242,12 +267,14 @@ class ClienteService:
                         "status": "Reposição Atrasada" if atraso > 0 else "Janela Ideal",
                         "volume_habitual": round(float(media_qtd), 0),
                         "fabrica_id": dados['fabrica_id'], "fabrica": dados['fabrica'],
+                        "origem": origens[pid],
                     }
                 )
 
         return sugestoes
 
     def _analisar_produtos_abandono(self, registros: list, ref: date) -> List[Dict[str, Any]]:
+        origens = origens_produtos(registros)
         sem_confirmacao = {p['produto_id'] for p in self._analisar_produtos_sem_confirmacao(registros)}
         produtos_map = defaultdict(lambda: {"sku": "", "nome": "", "datas": []})
         for r in registros:
@@ -281,6 +308,7 @@ class ClienteService:
                         "ciclo_habitual": ciclo,
                         "total_vezes_comprado": len(datas),
                         "fabrica_id": dados['fabrica_id'], "fabrica": dados['fabrica'],
+                        "origem": origens[pid],
                     }
                 )
 
@@ -288,6 +316,7 @@ class ClienteService:
 
     @staticmethod
     def _analisar_produtos_sem_confirmacao(registros):
+        origens = origens_produtos(registros)
         sem_itens = ultimos_pedidos_sem_itens(registros)
         ultimos = {}
         for r in registros:
@@ -297,7 +326,11 @@ class ClienteService:
                  "fabrica_id": r.fabrica_id, "fabrica": r.fabrica_nome,
                  "ultima_compra_conhecida": r.data_venda.isoformat(),
                  "pedido_sem_itens": sem_itens[r.fabrica_id].isoformat(),
-                 "mensagem": "Recompra não confirmada: existe pedido posterior sem itens."}
+                 "origem": origens[pid],
+                 "pedidos_sem_itens": list({p.venda_id: origem_pedido(p) for p in registros
+                     if p.produto_id is None and p.fabrica_id == r.fabrica_id
+                     and p.data_venda > r.data_venda}.values()),
+                 "mensagem": "Recompra não confirmada: há pedido posterior sem itens registrados na base. Confira a importação."}
                 for pid, r in ultimos.items()
                 if recompra_nao_confirmada(r.data_venda, sem_itens.get(r.fabrica_id))]
 

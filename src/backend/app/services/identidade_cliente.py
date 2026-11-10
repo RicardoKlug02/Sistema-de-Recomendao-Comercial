@@ -18,9 +18,11 @@ class IdentidadeCliente:
             Cliente.grupo_economico, Cliente.micro_regiao, Cliente.estado)}
         representantes = {}
         self.ids = {}
+        self._fiscais = {}
         for cid, c in sorted(self.clientes.items()):
             chave = chave_cliente(cid, c.grupo_economico)
             self.ids[cid] = representantes.setdefault(chave, cid)
+            self._fiscais.setdefault(self.ids[cid], []).append(cid)
 
     def id(self, fiscal_id):
         return self.ids[fiscal_id]
@@ -31,7 +33,7 @@ class IdentidadeCliente:
 
     def fiscais(self, fiscal_id):
         comercial = self.id(fiscal_id)
-        return [cid for cid, grupo in self.ids.items() if grupo == comercial]
+        return list(self._fiscais[comercial])
 
     def expressao(self):
         # Apenas IDs de redes precisam de CASE; cadastros individuais preservam seu ID.

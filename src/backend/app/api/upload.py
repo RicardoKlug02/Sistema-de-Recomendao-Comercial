@@ -41,7 +41,8 @@ def _resultado(carga):
             "pedidos_sem_itens": carga.pedidos_sem_itens, "avisos": avisos, "erros": 0,
             "modo": resumo.get("modo", "atualizar"), "mes": resumo.get("mes"),
             "excluidos": resumo.get("excluidos", 0), "itens_removidos": resumo.get("itens_removidos", 0),
-            "quantidades_reduzidas": resumo.get("quantidades_reduzidas", 0)}
+            "quantidades_reduzidas": resumo.get("quantidades_reduzidas", 0),
+            "desconsiderados_por_tipo": len(resumo.get("pedidos_desconsiderados", []))}
 
 
 @router.get("/historico")
@@ -110,8 +111,25 @@ def _processar(arquivo_cabecalho, arquivo_itens, db, usuario, conferir=False, to
                           "data": v.data_venda.isoformat(), "valor_total": v.valor_total,
                           "itens": itens_removidos.get(v.id, [])} for v in removidos]
             resultado = service._validar_e_salvar(df_cab, df_itens, commit=False, modo=modo, mes=mes)
+            # Se um pedido antigo agora vem explicitamente como não venda,
+            # retira-o das análises e conserva uma decisão auditável.
+            from src.backend.app.models import Venda, Fabrica
+            from src.backend.app.services.revisao_pedido_service import registrar_revisao
+            from src.backend.app.services.excel_service import normalizar_coluna
+            from sqlalchemy import func
+            for p in resumo.get('pedidos_desconsiderados', []):
+                v = (db.query(Venda).execution_options(incluir_vendas_excluidas=True)
+                     .join(Fabrica, Fabrica.id == Venda.fabrica_id)
+                     .filter(Venda.numero_pedido == p['pedido'], func.lower(Fabrica.nome_fantasia) == p['fabrica'].lower())
+                     .with_for_update().first())
+                if v and v.classificacao == 'NAO_REVISADO':
+                    tipo = 'BONIFICACAO' if 'bonifica' in normalizar_coluna(p['tipo']) else 'OUTRO_TIPO'
+                    registrar_revisao(db, v, tipo, f"Tipo informado na reimportação: {p['tipo']}.",
+                                      os.path.basename(arquivo_cabecalho.filename), usuario.id)
             resumo_carga = {k: resumo[k] for k in ("modo", "mes", "excluidos", "itens_removidos", "quantidades_reduzidas")}
             resumo_carga["pedidos_excluidos"] = auditoria
+            resumo_carga["alteracoes_rede"] = resumo.get("alteracoes_rede", [])
+            resumo_carga["pedidos_desconsiderados"] = resumo.get("pedidos_desconsiderados", [])
             carga = Importacao(arquivo=os.path.basename(arquivo_cabecalho.filename),
                                 arquivo_itens=os.path.basename(arquivo_itens.filename), usuario=usuario.email,
                                 avisos_json=json.dumps(resultado["avisos"], ensure_ascii=False),

@@ -45,6 +45,7 @@ class ClienteOptionOut(ClienteBase):
 
 
 class FabricaResumoOut(BaseModel):
+    origem: dict = Field(default_factory=dict)
     fabrica_id: int
     fabrica: str
     ultima_compra: str
@@ -60,6 +61,7 @@ class FabricaResumoOut(BaseModel):
 
 
 class ReposicaoOut(BaseModel):
+    origem: dict = Field(default_factory=dict)
     produto_id: int
     sku: str
     nome: str
@@ -72,6 +74,7 @@ class ReposicaoOut(BaseModel):
 
 
 class AbandonoOut(BaseModel):
+    origem: dict = Field(default_factory=dict)
     produto_id: int
     sku: str
     nome: str
@@ -91,6 +94,8 @@ class YoYOut(BaseModel):
 
 
 class ProdutoSemConfirmacaoOut(BaseModel):
+    origem: dict = Field(default_factory=dict)
+    pedidos_sem_itens: List[dict] = Field(default_factory=list)
     produto_id: int
     sku: str
     nome: str
@@ -115,6 +120,7 @@ class RecomendacaoProdutoOut(BaseModel):
 
 
 class ClienteDetalhesOut(BaseModel):
+    origem: dict = Field(default_factory=dict)
     cliente_id: int
     razao_social: str
     cnpj_cpf: Optional[str] = None

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, ForeignKey, Date, String, UniqueConstraint
+from sqlalchemy import Column, Integer, Float, ForeignKey, Date, String, UniqueConstraint, Boolean, true
 from sqlalchemy.orm import relationship
 from src.backend.app.core.database import Base
 
@@ -14,6 +14,9 @@ class Venda(Base):
     fabrica_id = Column(Integer, ForeignKey("fabricas.id"), nullable=False, index=True)
     data_venda = Column(Date, nullable=False, index=True)  # Indexado para filtros de datas rápidos
     valor_total = Column(Float, default=0.0, nullable=False)
+    classificacao = Column(String(30), default='NAO_REVISADO', server_default='NAO_REVISADO', nullable=False)
+    considerar_analises = Column(Boolean, default=True, server_default=true(), nullable=False)
+    nova_compra = Column(Boolean, default=True, server_default=true(), nullable=False)
 
     # Relações
     cliente = relationship("Cliente", back_populates="vendas")

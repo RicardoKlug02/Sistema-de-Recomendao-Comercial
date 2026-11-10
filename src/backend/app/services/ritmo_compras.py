@@ -1,6 +1,7 @@
 """Variações descritivas entre períodos iguais, sem alertas automáticos de queda."""
 from collections import defaultdict
 from datetime import timedelta
+from src.backend.app.services.evidencia_produtos import origem_pedido, origens_produtos
 
 
 def limites(ref):
@@ -23,19 +24,23 @@ def calcular_ritmo(vendas, ref):
     anterior, inicio, fim = limites(ref)
     recente = [v for v in vendas if inicio <= v.data_venda < fim]
     habitual = [v for v in vendas if anterior <= v.data_venda < inicio]
-    suficiente = bool(vendas and min(v.data_venda for v in vendas) <= anterior and len(habitual) >= 2)
+    compras = [v for v in vendas if getattr(v, 'nova_compra', True)]
+    habitual_compras = [v for v in habitual if getattr(v, 'nova_compra', True)]
+    recente_compras = [v for v in recente if getattr(v, 'nova_compra', True)]
+    suficiente = bool(compras and min(v.data_venda for v in compras) <= anterior and len(habitual_compras) >= 2)
     return {
         "inicio_recente": inicio.isoformat(), "fim_recente": ref.isoformat(),
         "inicio_habitual": anterior.isoformat(), "fim_habitual": (inicio - timedelta(days=1)).isoformat(),
         "historico_suficiente": suficiente,
         "valor": comparacao(sum(v.valor_total for v in recente), sum(v.valor_total for v in habitual) / 3, suficiente),
-        "pedidos": comparacao(len(recente), len(habitual) / 3, suficiente),
+        "pedidos": comparacao(len(recente_compras), len(habitual_compras) / 3, suficiente),
     }
 
 
 def comparar_produtos(registros, ref, suficiente):
     anterior, inicio, fim = limites(ref)
     produtos, fabricas_incompletas = {}, set()
+    origens = origens_produtos([r for r in registros if anterior <= r.data_venda < fim])
     for r in registros:
         if not anterior <= r.data_venda < fim:
             continue
@@ -55,5 +60,9 @@ def comparar_produtos(registros, ref, suficiente):
         c = comparacao(recente, habitual, suficiente and datas_anteriores >= 2 and not incompleto)
         if incompleto:
             c["status"] = "ITENS_INCOMPLETOS"
-        resultado.append({"produto_id": pid, "nome": p["nome"], "sku": p["sku"], "fabrica_id": p['fabrica_id'], "fabrica": p['fabrica'], **c})
+        resultado.append({"produto_id": pid, "nome": p["nome"], "sku": p["sku"], "fabrica_id": p['fabrica_id'], "fabrica": p['fabrica'],
+                          "origem": origens[pid],
+                          "pedidos_sem_itens": list({getattr(r,'venda_id',r.data_venda): origem_pedido(r) for r in registros
+                              if r.produto_id is None and r.fabrica_id == p['fabrica_id']
+                              and anterior <= r.data_venda < fim}.values()), **c})
     return sorted(resultado, key=lambda p: (p["variacao_pct"] is None, p["variacao_pct"] or 0, p["nome"]))

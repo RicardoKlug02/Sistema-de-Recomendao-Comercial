@@ -2,7 +2,8 @@ from typing import Generator
 import ssl
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, with_loader_criteria
+from sqlalchemy import event
 from src.backend.app.core.config import settings
 
 
@@ -39,6 +40,23 @@ elif DATABASE_URL.drivername == "sqlite":
 engine = create_engine(DATABASE_URL, **options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+@event.listens_for(Session, 'do_orm_execute')
+def filtrar_vendas_comerciais(consulta):
+    """Uma decisão de bonificação/duplicidade vale em todas as análises ORM.
+
+    Importação e conferência administrativa usam explicitamente
+    execution_options(incluir_vendas_excluidas=True) para preservar os registros.
+    Não intercepta INSERT, UPDATE ou DELETE.
+    """
+    if consulta.is_select and not consulta.execution_options.get('incluir_vendas_excluidas', False):
+        from src.backend.app.models.venda import Venda
+        consulta.statement = consulta.statement.options(with_loader_criteria(
+            Venda, lambda venda: venda.considerar_analises.is_(True), include_aliases=True))
+        if not consulta.execution_options.get('incluir_ajustes_comissionados', False):
+            consulta.statement = consulta.statement.options(with_loader_criteria(
+                Venda, lambda venda: venda.nova_compra.is_(True), include_aliases=True))
 
 
 def get_db() -> Generator[Session, None, None]:

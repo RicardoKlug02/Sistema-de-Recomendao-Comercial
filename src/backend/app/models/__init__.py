@@ -11,3 +11,4 @@ from .importacao import Importacao
 
 from .regra_negocio import RegraNegocio
 from .acao_alerta import AcaoAlerta
+from .revisao_pedido import RevisaoPedido

@@ -104,6 +104,7 @@ class MotorRegras:
             if self.bloqueada(cid,r.fabrica_id,ref,consolidar):
                 continue
             dados = dict(r._mapping)
+            dados['sku_original'] = getattr(r, 'sku', None)
             if r.produto_id is not None:
                 pid = self.produto(r.produto_id,cid,ref,r.data_venda)
                 if pid != r.produto_id:

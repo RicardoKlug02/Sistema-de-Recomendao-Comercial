@@ -3,8 +3,9 @@ import CartaoIndicador from './CartaoIndicador'
 import EstadoConsulta from './EstadoConsulta'
 import ListaProdutos from './ListaProdutos'
 import RitmoCompras from './RitmoCompras'
+import OrigemInformacao from './OrigemInformacao'
 import useDados from '../hooks/useDados'
-import { formatarMoeda } from '../servicos/formatacao'
+import { formatarMoeda, formatarData } from '../servicos/formatacao'
 
 export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCadastro }) {
   const parametros = new URLSearchParams({ agrupar_rede: rede })
@@ -23,6 +24,14 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                   {cliente.clientes_agrupados} cadastro(s) fiscal(is)
                 </p>
               </section>
+              {cliente.origem && <div className="nota-painel">
+                <p>Fonte: {cliente.origem.fonte}. Posição em {formatarData(cliente.origem.referencia)}.
+                  {' '}Escopo: {cliente.origem.escopo}. Rede cadastrada: {cliente.grupo_economico || 'Nenhuma — este CNPJ é analisado individualmente'}.
+                  {' '}Histórico de {formatarData(cliente.origem.inicio)} até {formatarData(cliente.origem.fim)}.</p>
+                <p>O agrupamento usa o cadastro atual da rede, inclusive para pedidos antigos. Compras em CNPJs sem vínculo cadastrado não são somadas automaticamente.</p>
+                <OrigemInformacao pedidos={cliente.origem.pedidos_sem_itens} titulo="Pedidos sem itens registrados na base" />
+                <OrigemInformacao pedidos={cliente.origem.ajustes_comissionados} titulo="Ajustes comissionados: valor sem nova compra" />
+              </div>}
               <div className="grade-indicadores">
                 <CartaoIndicador
                   titulo="Valor comprado"
@@ -32,7 +41,7 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                 <CartaoIndicador
                   titulo="Pedidos emitidos"
                   valor={cliente.pedidos_emitidos}
-                  detalhe="Inclui pedidos diretos de fábrica"
+                  detalhe="Cabeçalhos importados, incluindo pedidos sem itens registrados"
                 />
               </div>
               <Cartao titulo="Cadastros fiscais do cliente">
@@ -61,7 +70,7 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                       {cliente.resumo_fabricas.map((f) => (
                         <tr key={f.fabrica_id}>
                           <th>{f.fabrica}</th>
-                          <td data-rotulo="Última compra">{f.ultima_compra}</td>
+                          <td data-rotulo="Última compra">{f.ultima_compra}<OrigemInformacao origem={f.origem} titulo="Ver última compra" /></td>
                           <td data-rotulo="Data limite">{f.data_limite_inatividade}</td>
                           <td data-rotulo="Situação"><span className={`etiqueta ${f.situacao_atividade === 'Inativa' ? 'etiqueta-alerta' : 'etiqueta-neutra'}`}>{f.situacao_atividade}</span></td>
                           <td data-rotulo="Ritmo de recompra">{f.situacao_recompra}</td>
@@ -79,6 +88,7 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                       <li key={p.produto_id}>
                         <strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}: {p.status} · volume habitual{' '}
                         {p.volume_habitual}
+                        <OrigemInformacao origem={p.origem} />
                       </li>
                     )} />
                   ) : (
@@ -88,8 +98,12 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                 <Cartao titulo="Produtos em abandono">
                   {cliente.produtos_sem_confirmacao?.length > 0 && <section aria-label="Produtos com recompra não confirmada">
                     <h3>Recompra não confirmada</h3>
-                    <p>Recompra não confirmada: existe pedido posterior sem itens. Estes produtos não são contados como abandono confirmado.</p>
-                    <ListaProdutos produtos={cliente.produtos_sem_confirmacao} renderizarItem={(p) => <li key={p.produto_id}><strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}</li>} />
+                    <p>Há pedidos posteriores sem itens registrados na base. Isso pode ser uma venda sem detalhamento ou uma importação incompleta. Confira os pedidos abaixo. Estes produtos não são contados como abandono confirmado.</p>
+                    <ListaProdutos produtos={cliente.produtos_sem_confirmacao} renderizarItem={(p) => <li key={p.produto_id}><strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}
+                      <p>Última compra conhecida: {formatarData(p.ultima_compra_conhecida)}.</p>
+                      <OrigemInformacao pedidos={p.pedidos_sem_itens} titulo="Ver pedidos que impedem confirmar a recompra" />
+                      <OrigemInformacao origem={p.origem} />
+                    </li>} />
                   </section>}
                   <section aria-label="Produtos com abandono confirmado">
                   <h3>Abandono confirmado</h3>
@@ -97,6 +111,8 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
                     <ListaProdutos produtos={cliente.produtos_em_abandono} renderizarItem={(p) => (
                       <li key={p.produto_id}>
                         <strong>{p.fabrica} · Código {p.sku}</strong><br />{p.nome}: {p.dias_parado} dias sem compra conhecida.
+                        <p>{p.total_vezes_comprado} datas de compra; ciclo médio de {p.ciclo_habitual} dias. Critério: pelo menos 60 dias sem compra e mais de 2,5 vezes o ciclo médio, com no mínimo três datas de compra.</p>
+                        <OrigemInformacao origem={p.origem} />
                       </li>
                     )} />
                   ) : (

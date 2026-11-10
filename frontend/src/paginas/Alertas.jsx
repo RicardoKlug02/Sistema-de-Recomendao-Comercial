@@ -7,6 +7,7 @@ import CabecalhoPagina from '../componentes/CabecalhoPagina'
 import EstadoConsulta from '../componentes/EstadoConsulta'
 import Paginacao from '../componentes/Paginacao'
 import Icone from '../componentes/Icone'
+import OrigemInformacao from '../componentes/OrigemInformacao'
 import Seletor from '../componentes/Seletor'
 
 const tipos = {
@@ -104,7 +105,7 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [] }) {
             <p className="resumo-alerta">{Object.entries(a.resumo || { [a.tipo]: 1 }).map(([id, total]) => `${total} × ${tipos[id] || id}`).join(' · ')}</p>
             <p><strong>Próxima ação:</strong> {a.resumo?.CLIENTE_INATIVO || a.resumo?.FABRICA_INATIVA ? 'Revisar oportunidades de retorno.' : a.resumo?.SEGUNDO_PEDIDO ? 'Verificar o contato após a primeira compra registrada na base.' : 'Conferir o histórico e preparar o próximo contato.'}</p>
             <details className="alertas-agrupados"><summary>Ver fábricas e produtos</summary><ul>
-              {(a.alertas || [a]).map((sinal) => <li key={sinal.id}><strong>{tipos[sinal.tipo] || sinal.tipo}</strong><p>{sinal.descricao}</p></li>)}
+              {(a.alertas || [a]).map((sinal) => <li key={sinal.id}><strong>{tipos[sinal.tipo] || sinal.tipo}</strong><p>{sinal.descricao}</p><OrigemInformacao origem={sinal.origem} titulo="Ver pedido de referência" /></li>)}
             </ul></details>
             <button
               className="botao-abrir"

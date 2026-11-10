@@ -6,6 +6,7 @@ import Tabela from '../componentes/Tabela'
 import useDados from '../hooks/useDados'
 import { dataLocal, formatarData, formatarMoeda } from '../servicos/formatacao'
 import { importarArquivos } from '../servicos/importacao'
+import RevisaoPedidos from '../componentes/RevisaoPedidos'
 
 
 export default function Importacao({ aoImportar }) {
@@ -97,7 +98,7 @@ export default function Importacao({ aoImportar }) {
               onChange={selecionarArquivo(definirItens)}
             />
           </label>
-          <p>Pedidos fechados diretamente pela fábrica podem não ter itens. Eles entram normalmente no faturamento.</p>
+          <p>O cabeçalho deve informar o Tipo do pedido. Apenas vendas são importadas; bonificações e outros tipos são desconsiderados e aparecem na conferência. Pedidos sem itens exigem conferência antes de serem confirmados como venda direta.</p>
           {conferencia && (
             <section aria-label="Conferência da importação">
               <h2>Confira antes de importar</h2>
@@ -114,11 +115,27 @@ export default function Importacao({ aoImportar }) {
               {conferencia.avisos.map((aviso) => (
                 <p key={aviso}>{aviso}</p>
               ))}
-              <Tabela colunas={['Pedido', 'Cliente', 'Fábrica', 'Data', 'Valor', 'Ação']}>
+              {conferencia.pedidos_desconsiderados?.length > 0 && <details className="entenda-indicador"><summary>Pedidos desconsiderados por tipo ({conferencia.pedidos_desconsiderados.length})</summary>
+                <Tabela colunas={['Pedido', 'Cliente', 'Fábrica', 'Tipo']}>
+                  {conferencia.pedidos_desconsiderados.map((p,i) => <tr key={`${p.fabrica}:${p.pedido}:${i}`}><td>{p.pedido}</td><td>{p.cliente}</td><td>{p.fabrica}</td><td>{p.tipo}</td></tr>)}
+                </Tabela>
+              </details>}
+              {conferencia.alteracoes_rede?.length > 0 && <details className="entenda-indicador"><summary>Conferir alterações de rede ({conferencia.alteracoes_rede.length})</summary>
+                <Tabela colunas={['Cliente', 'CNPJ/CPF', 'Rede anterior', 'Nova rede']}>
+                  {conferencia.alteracoes_rede.map((r) => <tr key={r.cnpj_cpf}><td>{r.cliente}</td><td>{r.cnpj_cpf}</td><td>{r.rede_anterior || 'Sem rede'}</td><td>{r.rede_nova}</td></tr>)}
+                </Tabela><p>As alterações também afetam o agrupamento dos pedidos anteriores.</p>
+              </details>}
+              {conferencia.pedidos_sem_itens_detalhes?.length > 0 && <details className="entenda-indicador"><summary>Conferir pedidos sem itens na planilha ({conferencia.pedidos_sem_itens})</summary>
+                <Tabela colunas={['Pedido', 'Cliente', 'CNPJ/CPF', 'Fábrica', 'Data']}>
+                  {conferencia.pedidos_sem_itens_detalhes.map((p) => <tr key={`${p.fabrica}:${p.pedido}`}><td>{p.pedido}</td><td>{p.cliente}</td><td>{p.cnpj_cpf}</td><td>{p.fabrica}</td><td>{formatarData(p.data)}</td></tr>)}
+                </Tabela><p>Mostra até 100 pedidos. Confira se são vendas sem detalhamento ou se faltam itens na exportação.</p>
+              </details>}
+              <Tabela colunas={['Pedido', 'Cliente', 'Rede cadastrada após a carga', 'Fábrica', 'Data', 'Valor', 'Ação']}>
                 {conferencia.pedidos.map((p) => (
                   <tr key={`${p.fabrica}:${p.pedido}`}>
                     <td>{p.pedido}</td>
                     <td>{p.cliente}</td>
+                    <td>{p.rede || 'Sem rede — CNPJ individual'}</td>
                     <td>{p.fabrica}</td>
                     <td>{p.data}</td>
                     <td>{formatarMoeda(p.valor)}</td>
@@ -177,6 +194,9 @@ export default function Importacao({ aoImportar }) {
             ))}
           </div>
         )}
+      </Cartao>
+      <Cartao titulo="Conferência dos pedidos da base">
+        <RevisaoPedidos aoAlterar={aoImportar} />
       </Cartao>
       <Cartao titulo="Histórico de importações">
         <EstadoConsulta

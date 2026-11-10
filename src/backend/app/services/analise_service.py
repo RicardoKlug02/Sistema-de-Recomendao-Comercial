@@ -52,7 +52,9 @@ class AnaliseService:
         return {v.cliente_id: v for v in self.escopo(referencia)}
 
     def carteira(self, referencia):
-        return {cid for cid, v in self.ultimos(referencia).items()
+        # Responsável é o último vendedor da rede no escritório, mesmo com filtro de fábrica.
+        ultimos_globais = {v.cliente_id: v for v in self.vendas if v.data_venda <= referencia}
+        return {cid for cid, v in ultimos_globais.items()
                 if self.vendedor_id is None or v.vendedor_id == self.vendedor_id}
 
     def eventos(self, escopo='cliente', carteira=None):
@@ -208,16 +210,29 @@ class AnaliseService:
     def inativos(self):
         linhas=[]
         ultimos=self.ultimos(self.fim)
+        fiscais = {c.id: c for c in self.db.query(Cliente).filter(Cliente.id.in_(
+            {self.fiscal_por_venda[v.id] for v in ultimos.values()}))}
         for cid in sorted(self.carteira(self.fim)):
-            v=ultimos[cid]; dias=(self.fim-v.data_venda).days
+            v=ultimos.get(cid)
+            if v is None: continue
+            dias=(self.fim-v.data_venda).days
             if dias < 90: continue
             c=self.clientes[cid]
-            linhas.append({'cliente':self.identidade.nome(c.id),'rede':c.grupo_economico or '—','regiao':c.micro_regiao or 'Não identificada',
-                'uf':c.estado or '—','ultima':v.data_venda.isoformat(),'dias':dias,'vendedor':self.vendedores.get(v.vendedor_id,'Não informado')})
+            fiscal=self.identidade.clientes[self.fiscal_por_venda[v.id]]
+            cadastro=fiscais[fiscal.id]
+            linhas.append({'cliente':self.identidade.nome(c.id),'rede':(c.grupo_economico or '').strip() or 'Sem rede cadastrada','regiao':fiscal.micro_regiao or 'Não identificada',
+                'uf':fiscal.estado or '—','ultima':v.data_venda.isoformat(),'dias':dias,'vendedor':self.vendedores.get(v.vendedor_id,'Não informado'),
+                'pedido':v.numero_pedido,'cnpj':cadastro.cnpj_cpf or 'Não informado',
+                'cadastro':cadastro.razao_social,'cadastros':len(self.identidade.fiscais(cid)),
+                'origem':{'fonte':'Cabeçalhos dos pedidos importados','venda_id':v.id,
+                          'cliente_id':fiscal.id,'fabrica_id':v.fabrica_id,'referencia':self.fim.isoformat()}})
         linhas.sort(key=lambda r:-r['dias'])
-        return self.tabela('Clientes inativos',[('cliente','Cliente'),('rede','Rede'),('regiao','Região imediata'),('uf','UF'),('ultima','Última compra','data'),('dias','Dias sem compra','numero'),('vendedor','Último vendedor')],linhas,
+        return self.tabela('Clientes inativos',[('cliente','Cliente comercial'),('rede','Rede cadastrada'),('regiao','Região imediata'),('uf','UF'),('ultima','Última compra','data'),('pedido','Nº último pedido'),('cnpj','CNPJ da última compra'),('dias','Dias sem compra','numero'),('vendedor','Vendedor da última compra')],linhas,
             ['Posição na data final. Sem filtro de fábrica, considera compras em todo o escritório. Com fábrica selecionada, mostra inatividade nessa fábrica.',
-             'Inatividade: pelo menos 90 dias. Clientes sem nenhuma compra conhecida não são classificados como inativos.'])
+             'Inatividade: pelo menos 90 dias. Clientes sem nenhuma compra conhecida não são classificados como inativos.',
+             'Origem: cabeçalhos dos pedidos importados até a data final. Último pedido e CNPJ identificam a compra que fundamenta a classificação. A região é a do CNPJ dessa compra.',
+             'A rede usa o cadastro atual: alterar a rede de um CNPJ reagrupa também os pedidos antigos. Sem rede cadastrada, o CNPJ é analisado individualmente.',
+             'O filtro de vendedor usa o último vendedor do cliente no escritório, independentemente da fábrica. A coluna identifica o vendedor da compra usada como evidência.'])
 
     def reativacoes(self,escopo):
         linhas=[]
