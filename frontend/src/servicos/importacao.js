@@ -9,17 +9,15 @@ function validarArquivo(arquivo) {
   if (!arquivo.size || arquivo.size > tamanhoMaximo) return 'Cada arquivo deve ter entre 1 byte e 10 MB.'
   return ''
 }
-function montarEnvio(cabecalho, itens, { modo = 'atualizar', mes = '' } = {}) {
+function montarEnvio(cabecalho, itens, { mes = '' } = {}) {
   const erro = validarArquivo(cabecalho) || validarArquivo(itens)
   if (erro) throw new Error(erro)
-  if (modo === 'sincronizar_mes' && !/^\d{4}-\d{2}$/.test(mes)) throw new Error('Selecione o mês completo a sincronizar.')
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) throw new Error('Selecione o mês completo a sincronizar.')
   const dados = new FormData()
   dados.append('arquivo_cabecalho', cabecalho)
   dados.append('arquivo_itens', itens)
-  if (modo === 'sincronizar_mes') {
-    dados.append('modo', modo)
-    dados.append('mes', mes)
-  }
+  dados.append('modo', 'sincronizar_mes')
+  dados.append('mes', mes)
   return dados
 }
 
@@ -29,7 +27,7 @@ export async function conferirPlanilhas(cabecalho, itens, escopo) {
 
 export async function confirmarImportacao(cabecalho, itens, tokenConferencia, escopo) {
   const dados = montarEnvio(cabecalho, itens, escopo)
-  if (escopo?.modo === 'sincronizar_mes') dados.append('confirmar_sincronizacao', 'true')
+  dados.append('confirmar_sincronizacao', 'true')
   dados.append('token_conferencia', tokenConferencia)
   dados.append('vendas_comissao', 'true')
   return solicitar('/cargas/excel', { method: 'POST', body: dados, tempoLimite })

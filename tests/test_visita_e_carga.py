@@ -12,9 +12,9 @@ def test_conferencia_final_persistida_no_historico(client, token_admin):
     h = {'Authorization': f'Bearer {token_admin}'}
     arquivos = {'arquivo_cabecalho': ('pedidos.xlsx', xlsx(cabecalhos())),
                 'arquivo_itens': ('itens.xlsx', xlsx(itens()))}
-    previa = client.post('/api/v1/cargas/conferir', headers=h, files=arquivos)
+    previa = client.post('/api/v1/cargas/conferir', headers=h, files=arquivos, data={"mes": "2026-08"})
     r = client.post('/api/v1/cargas/excel', headers=h, files=arquivos,
-                    data={'token_conferencia': previa.json()['token_conferencia'], 'vendas_comissao': 'true'})
+                    data={'token_conferencia': previa.json()['token_conferencia'], 'vendas_comissao': 'true', 'mes': '2026-08', 'confirmar_sincronizacao': 'true'})
     assert r.status_code == 200, r.text
     base = r.json()['conferencia_base']
     assert base['pedidos_compra'] == 2 and base['linhas_itens'] == 1

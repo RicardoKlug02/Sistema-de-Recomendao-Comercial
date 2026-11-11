@@ -1,9 +1,6 @@
 # Reimportação e sincronização mensal
 
-Existem dois modos na tela de importação:
-
-- Atualizar pedidos informados: adequado a arquivos parciais. Atualiza cabeçalhos e substitui os itens dos pedidos com detalhamento na carga. Quantidades menores e preços alterados substituem os anteriores. Pedidos ausentes não são excluídos; pedidos que vierem sem itens conservam os itens conhecidos.
-- Sincronizar mês completo: exige o mês explícito e arquivos com todas as vendas desse mês, de todos os vendedores e fábricas. Remove pedidos daquele mês que não constam nos cabeçalhos e substitui os itens dos pedidos informados, inclusive quando a lista ficou vazia. Não remove cadastros de clientes, produtos ou fábricas.
+A importação aceita somente a sincronização de um mês encerrado. Exige o mês explícito e arquivos com todas as vendas desse mês, de todos os vendedores e fábricas. Remove pedidos daquele mês que não constam nos cabeçalhos e substitui os itens dos pedidos informados, inclusive quando a lista ficou vazia. Não remove cadastros de clientes, produtos ou fábricas.
 
 O mês é determinado pela data de emissão do pedido. Não se deve escolher a sincronização para relatórios filtrados por vendedor, fábrica ou cliente. O sistema não consegue comprovar, apenas pelos registros, que o arquivo está completo: essa confirmação é responsabilidade de quem importa.
 

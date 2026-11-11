@@ -55,7 +55,7 @@ def historico(db: Session = Depends(get_db), _: Usuario = Depends(get_usuario_at
 
 @router.post("/conferir")
 def conferir_planilhas(arquivo_cabecalho: UploadFile = File(...), arquivo_itens: UploadFile = File(...),
-                       modo: Literal["atualizar", "sincronizar_mes"] = Form("atualizar"), mes: str | None = Form(None),
+                       modo: Literal["sincronizar_mes"] = Form("sincronizar_mes"), mes: str = Form(...),
                        db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_admin)):
     return _processar(arquivo_cabecalho, arquivo_itens, db, usuario, conferir=True, modo=modo, mes=mes)
 
@@ -63,7 +63,7 @@ def conferir_planilhas(arquivo_cabecalho: UploadFile = File(...), arquivo_itens:
 @router.post("/excel")
 def upload_planilhas_vendas(arquivo_cabecalho: UploadFile = File(...), arquivo_itens: UploadFile = File(...),
                             token_conferencia: str = Form(...), vendas_comissao: bool = Form(...),
-                            modo: Literal["atualizar", "sincronizar_mes"] = Form("atualizar"), mes: str | None = Form(None),
+                            modo: Literal["sincronizar_mes"] = Form("sincronizar_mes"), mes: str = Form(...),
                             confirmar_sincronizacao: bool = Form(False),
                             db: Session = Depends(get_db), usuario: Usuario = Depends(get_usuario_admin)):
     if not vendas_comissao:

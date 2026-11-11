@@ -35,7 +35,8 @@ def vendedores(db: Session = Depends(get_db)):
 
 @router.get("/alertas")
 def alertas(vendedor_id: Optional[int] = None, tipo: Optional[str] = None, fabrica_id: Optional[int] = None, situacao: Optional[SituacaoAcao] = None,
-            pagina: int = Query(1, ge=1), limite: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
+            pagina: int = Query(1, ge=1), limite: int = Query(50, ge=1, le=200), rotina: bool = False,
+            db: Session = Depends(get_db)):
     registros = ComercialService(db).alertas(vendedor_id, fabrica_id)
     if tipo:
         registros = [r for r in registros if r["tipo"] == tipo]
@@ -43,12 +44,15 @@ def alertas(vendedor_id: Optional[int] = None, tipo: Optional[str] = None, fabri
     grupos = {}
     for r in registros:
         grupo = grupos.setdefault(r["cliente_id"], {"id": f"cliente:{r['cliente_id']}",
-            "cliente_id": r["cliente_id"], "cliente": r["cliente"], "prioridade": r["prioridade"], "alertas": []})
+            "cliente_id": r["cliente_id"], "cliente": r["cliente"], "prioridade": r["prioridade"],
+            "volume_compras_12m": r["volume_cliente_12m"], "alertas": []})
         grupo["prioridade"] = min(grupo["prioridade"], r["prioridade"])
         grupo["alertas"].append(r)
     registros = list(grupos.values())
     estados = acompanhamentos(db,IdentidadeCliente(db))
     for grupo in registros:
+        grupo['alertas'].sort(key=lambda a: (a['fabrica_id'] is not None,
+            -(a['volume_fabrica_12m'] or 0), a['prioridade'], -a['dias']))
         assinatura = grupo['alertas'][0]['assinatura']
         anterior = estados.get(grupo['cliente_id'])
         mudou = anterior is not None and anterior['assinatura'] != assinatura
@@ -60,6 +64,16 @@ def alertas(vendedor_id: Optional[int] = None, tipo: Optional[str] = None, fabri
         grupo['resumo'] = {t:sum(a['tipo']==t for a in grupo['alertas']) for t in {a['tipo'] for a in grupo['alertas']}}
     if situacao:
         registros = [g for g in registros if g['acompanhamento']['situacao']==situacao]
+    hoje = hoje_comercial()
+
+    def ordem(grupo):
+        retorno = grupo['acompanhamento']['proximo_contato']
+        volume = grupo['volume_compras_12m']
+        if rotina and retorno is not None and retorno <= hoje:
+            return (0, retorno, -volume, grupo['prioridade'])
+        return (1, hoje, -volume, grupo['prioridade'])
+
+    registros.sort(key=ordem)
     quantidade = sum(len(g['alertas']) for g in registros)
     inicio = (pagina - 1) * limite
     return {"total": len(registros), "total_alertas": quantidade, "itens": registros[inicio:inicio + limite]}

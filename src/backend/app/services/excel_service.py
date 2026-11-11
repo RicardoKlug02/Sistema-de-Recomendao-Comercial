@@ -176,6 +176,8 @@ class ExcelService:
             raise ValueError("Informe um mês válido para sincronizar.")
         if inicio > hoje_comercial():
             raise ValueError("Não é possível sincronizar um mês futuro.")
+        if fim > hoje_comercial():
+            raise ValueError("Selecione um mês encerrado. Não é possível sincronizar o mês em andamento.")
         return inicio, fim
 
     def _preparar_carga(self, df_cab, df_prod, modo="atualizar", mes=None):

@@ -25,19 +25,26 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
         <h2>{cliente.razao_social}</h2>
         <p>{cliente.grupo_economico || 'Cliente individual'} · {cliente.clientes_agrupados} cadastro(s) fiscal(is)</p>
       </section>
+      <nav className="atalhos-ficha" aria-label="Atalhos da ficha">
+        <a href="#ficha-reposicao">Recomprar</a>
+        <a href="#ficha-abandono">Recuperar produtos</a>
+        <a href="#ficha-mix">Ampliar mix</a>
+        <a href="#ficha-fabricas">Ver fábricas</a>
+      </nav>
       <ExportarVisita key={`${clienteId}:${rede}:${fabrica}`} cliente={cliente} rede={rede} fabrica={fabrica} />
-      {cliente.origem && <div className="nota-painel">
+      {cliente.origem && <details className="nota-painel">
+        <summary>Histórico utilizado e origem dos dados</summary>
         <p>Fonte: {cliente.origem.fonte}. Posição em {formatarData(cliente.origem.referencia)}.
           {' '}Escopo: {cliente.origem.escopo}. Rede cadastrada: {cliente.grupo_economico || 'Nenhuma — este CNPJ é analisado individualmente'}.
           {' '}Histórico de {formatarData(cliente.origem.inicio)} até {formatarData(cliente.origem.fim)}.</p>
         <p>O agrupamento usa o cadastro atual da rede, inclusive para pedidos antigos. Compras em CNPJs sem vínculo cadastrado não são somadas automaticamente.</p>
         <OrigemInformacao pedidos={cliente.origem.pedidos_sem_itens} titulo="Pedidos sem itens registrados na base" />
         <OrigemInformacao pedidos={cliente.origem.ajustes_comissionados} titulo="Ajustes comissionados: valor sem nova compra" />
-      </div>}
+      </details>}
       <div className="grade-indicadores">
-        <CartaoIndicador titulo="Valor comprado" valor={formatarMoeda(cliente.valor_comprado)}
-          detalhe={fabrica ? 'Histórico da fábrica selecionada' : 'Histórico de todas as fábricas'} />
-        <CartaoIndicador titulo="Pedidos emitidos" valor={cliente.pedidos_emitidos} detalhe="Compras importadas; ajustes comissionados contam somente no valor" />
+        <CartaoIndicador titulo="Faturamento comissionado" valor={formatarMoeda(cliente.valor_comprado)}
+          detalhe={fabrica ? 'Histórico da fábrica selecionada, com ajustes' : 'Histórico de todas as fábricas, com ajustes'} />
+        <CartaoIndicador titulo="Pedidos de compra" valor={cliente.pedidos_emitidos} detalhe="Ajustes sem nova compra não entram na contagem" />
       </div>
       <Cartao titulo="Cadastros fiscais do cliente">
         <ul className="lista-clientes">{cliente.cadastros_fiscais?.map((c) => <li key={c.id}>
@@ -46,7 +53,7 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
         </li>)}</ul>
       </Cartao>
       <RitmoCompras ritmo={cliente.ritmo_compras} produtos={cliente.comparacao_produtos || []} />
-      <Cartao titulo="Fábricas e inatividade">
+      <Cartao id="ficha-fabricas" titulo="Fábricas e inatividade">
         <Tabela className="tabela-fabricas" colunas={['Fábrica', 'Última compra', 'Data limite', 'Status', 'Ritmo de recompra']}>
           {cliente.resumo_fabricas.map((f) => (
             <tr key={f.fabrica_id}>
@@ -61,14 +68,14 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
         <details className="entenda-indicador"><summary>Entenda este indicador</summary><p>A fábrica fica inativa a partir de 90 dias sem compra. A recompra pode estar atrasada antes disso, conforme o intervalo médio do histórico. São situações diferentes.</p></details>
       </Cartao>
       <div className="grade-resumos">
-        <Cartao titulo="Reposição de produtos">
+        <Cartao id="ficha-reposicao" titulo="Reposição de produtos">
           <ListaOuVazio itens={cliente.sugestoes_reposicao} vazio="Nenhuma reposição identificada neste momento.">
             <ListaProdutos produtos={cliente.sugestoes_reposicao} renderizarItem={(p) => (
               <li key={p.produto_id}><strong>{rotuloProduto(p)}</strong><br />{p.nome}: {p.status} · volume habitual {p.volume_habitual}<OrigemInformacao origem={p.origem} /></li>
             )} />
           </ListaOuVazio>
         </Cartao>
-        <Cartao titulo="Produtos em abandono">
+        <Cartao id="ficha-abandono" titulo="Produtos em abandono">
           {cliente.produtos_sem_confirmacao?.length > 0 && <section aria-label="Produtos com recompra não confirmada">
             <h3>Recompra não confirmada</h3>
             <p>Há pedidos posteriores sem itens registrados na base. Isso pode ser uma venda sem detalhamento ou uma importação incompleta. Confira os pedidos abaixo. Estes produtos não são contados como abandono confirmado.</p>
@@ -83,18 +90,21 @@ export default function FichaCliente({ clienteId, rede, fabrica, aoConsultarCada
           <ListaOuVazio itens={cliente.produtos_em_abandono} vazio="Nenhum abandono identificado.">
             <ListaProdutos produtos={cliente.produtos_em_abandono} renderizarItem={(p) => (
               <li key={p.produto_id}><strong>{rotuloProduto(p)}</strong><br />{p.nome}: {p.dias_parado} dias sem compra conhecida.
-                <p>{p.total_vezes_comprado} datas de compra; ciclo médio de {p.ciclo_habitual} dias. Critério: pelo menos 60 dias sem compra e mais de 2,5 vezes o ciclo médio, com no mínimo três datas de compra.</p>
+                <p>{p.total_vezes_comprado} datas de compra · ciclo médio de {p.ciclo_habitual} dias.</p>
                 <OrigemInformacao origem={p.origem} />
               </li>
             )} />
           </ListaOuVazio>
           </section>
+          <details className="entenda-indicador"><summary>Como o abandono é identificado?</summary>
+            <p>Pelo menos 60 dias sem compra, mais de 2,5 vezes o ciclo médio e no mínimo três datas de compra. Pedidos sem itens podem impedir a confirmação.</p>
+          </details>
         </Cartao>
-        <Cartao titulo="Completar o mix">
+        <Cartao id="ficha-mix" titulo="Completar o mix">
           <details className="entenda-indicador"><summary>Entenda as recomendações</summary><p>As sugestões usam compras de redes com histórico semelhante e respeitam as regras comerciais. Afinidade é uma pontuação de ordenação, não uma probabilidade de venda. Confira o contexto comercial antes de oferecer.</p></details>
           <ListaOuVazio itens={cliente.sugestoes_expansao_mix} vazio="Ainda não há histórico semelhante suficiente para sugerir produtos.">
             <ListaProdutos produtos={cliente.sugestoes_expansao_mix} renderizarItem={(p) => (
-              <li key={p.produto_id}><strong>{rotuloProduto(p)}</strong><p>{p.nome}</p><p>{p.motivo} · volume sugerido: {p.volume_sugerido_unidades}</p></li>
+              <li key={p.produto_id}><strong>{rotuloProduto(p)}</strong><p>{p.nome}</p><p>Encontrado em históricos de compra semelhantes. Confira se faz sentido para este cliente.</p></li>
             )} />
           </ListaOuVazio>
         </Cartao>

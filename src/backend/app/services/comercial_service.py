@@ -97,21 +97,29 @@ class ComercialService:
 
     def alertas(self, vendedor_id=None, fabrica_id=None):
         ref = hoje_comercial()
-        vendas = self.db.query(Venda.id, Venda.numero_pedido, Venda.cliente_id, Venda.fabrica_id, Venda.data_venda, Venda.vendedor_id).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
+        vendas = self.db.query(Venda.id, Venda.numero_pedido, Venda.cliente_id, Venda.fabrica_id, Venda.data_venda, Venda.vendedor_id, Venda.valor_total).filter(Venda.data_venda <= ref).order_by(Venda.data_venda, Venda.id).all()
         originais = {v.id: v for v in vendas}
         vendas = [SimpleNamespace(**{**v._mapping, "cliente_id": self.identidade.id(v.cliente_id)}) for v in vendas]
+        inicio_volume = ref - relativedelta(months=12)
+        volume_cliente, volume_fabrica = defaultdict(float), defaultdict(float)
+        for v in vendas:
+            if v.data_venda > inicio_volume:
+                volume_cliente[v.cliente_id] += v.valor_total
+                volume_fabrica[(v.cliente_id, v.fabrica_id)] += v.valor_total
         regras = MotorRegras(self.db,self.identidade)
-        vendas = [v for v in vendas if not regras.bloqueada(v.cliente_id,v.fabrica_id,ref)]
-        atendidos_fabrica = {v.cliente_id for v in vendas if v.fabrica_id == fabrica_id}
+        elegiveis = [v for v in vendas if not regras.bloqueada(v.cliente_id,v.fabrica_id,ref)]
+        atendidos_fabrica = {v.cliente_id for v in elegiveis if v.fabrica_id == fabrica_id}
+        clientes_elegiveis = {v.cliente_id for v in elegiveis}
         fabricas = {f.id: f for f in self.db.query(Fabrica).all()}
         por_cliente, por_fabrica, por_produto = defaultdict(list), defaultdict(list), defaultdict(dict)
         for v in vendas:
             por_cliente[v.cliente_id].append(v)
+        for v in elegiveis:
             por_fabrica[(v.cliente_id, v.fabrica_id)].append(v)
         itens = (self.db.query(Venda.cliente_id, Venda.data_venda, Venda.vendedor_id, Venda.id, ItemVenda.produto_id, Produto.nome, Produto.sku, Produto.fabrica_id)
                  .select_from(Venda).join(ItemVenda, ItemVenda.venda_id == Venda.id)
-                 .join(Produto, Produto.id == ItemVenda.produto_id).filter(Venda.data_venda <= ref,
-                     *([Produto.fabrica_id == fabrica_id] if fabrica_id is not None else [])).distinct().order_by(Venda.data_venda, Venda.id).all())
+                  .join(Produto, Produto.id == ItemVenda.produto_id).filter(Venda.data_venda <= ref)
+                  .distinct().order_by(Venda.data_venda, Venda.id).all())
         for r in itens:
             cid = self.identidade.id(r.cliente_id)
             if regras.bloqueada(cid,r.fabrica_id,ref):
@@ -136,9 +144,11 @@ class ComercialService:
                               "_evidencia_id": venda.id,
                               "referencia": venda.data_venda.isoformat()})
         for cid, historico in por_cliente.items():
+            if cid not in clientes_elegiveis:
+                continue
             ultima = historico[-1]
             dias = (ref - ultima.data_venda).days
-            if len(historico) == 1 and dias >= 14:
+            if len(historico) == 1 and 14 <= dias < 90:
                 adicionar("SEGUNDO_PEDIDO", cid, "Contatar cliente após a primeira compra registrada na base. Confira o histórico disponível.", dias, 2, ultima)
             if dias >= 90:
                 adicionar("CLIENTE_INATIVO", cid, "Cliente sem pedidos há pelo menos 90 dias.", dias, 1, ultima)
@@ -175,6 +185,10 @@ class ComercialService:
             {v.cliente_id for v in evidencia.values()}))}
         for a in resultado:
             v = evidencia.get(a['id'])
+            cid, fid = a['cliente_id'], a['fabrica_id']
+            a['volume_cliente_12m'] = round(volume_cliente[cid] if filtro_fabrica is None
+                                            else volume_fabrica[(cid, filtro_fabrica)], 2)
+            a['volume_fabrica_12m'] = round(volume_fabrica[(cid, fid)], 2) if fid is not None else None
             if v:
                 c = fiscais[v.cliente_id]
                 a['origem'] = {'fonte': 'Itens dos pedidos importados' if a['produto_id'] else 'Cabeçalhos dos pedidos importados',

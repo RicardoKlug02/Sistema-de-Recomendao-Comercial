@@ -79,10 +79,10 @@ def test_reimportacao_preserva_classificacao_e_identidade_do_pedido(db_session, 
 
 def test_importacao_mista_desconsidera_bonificacao_e_seus_itens(db_session):
     cab = pd.DataFrame([dict(pedido=str(i), fabrica='Cibra', cliente='Cliente', cnpj_cpf='11111111000111',
-                            data=REF, valor_total=10, tipo_pedido=tipo) for i, tipo in enumerate(['Venda','Bonificação'])])
+                            data=date(2026, 10, 9), valor_total=10, tipo_pedido=tipo) for i, tipo in enumerate(['Venda','Bonificação'])])
     itens = pd.DataFrame([dict(pedido=str(i), sku='100', nome_produto='Produto', quantidade=1, preco_unitario=10) for i in range(2)])
     s = ExcelService(db_session)
-    previa = s.conferir(cab, itens, modo='sincronizar_mes', mes='2026-11')
+    previa = s.conferir(cab, itens, modo='sincronizar_mes', mes='2026-10')
     assert previa['processados'] == 1 and previa['valor_total'] == 10 and previa['itens'] == 1
     assert previa['pedidos_desconsiderados'][0]['tipo'] == 'Bonificação'
     s._validar_e_salvar(cab, itens)
@@ -133,6 +133,9 @@ def test_vendedor_nao_pode_revisar_pedidos(client, db_session):
 
 def test_reimportacao_com_tipo_bonificacao_corrige_registro_antigo_sem_apaga_lo(client, token_admin, base, db_session):
     c, f, _, vs = base
+    vs[3].data_venda = date(2026, 10, 4)
+    vs[4].data_venda = date(2026, 10, 8)
+    db_session.commit()
     cab = pd.DataFrame([dict(pedido=v.numero_pedido, fabrica=f.nome_fantasia, cliente=c.razao_social,
         cnpj_cpf=c.cnpj_cpf, data=v.data_venda, valor_total=v.valor_total,
         tipo_pedido=tipo) for v, tipo in [(vs[3], 'Bonificação'), (vs[4], 'Venda')]])
@@ -142,11 +145,11 @@ def test_reimportacao_com_tipo_bonificacao_corrige_registro_antigo_sem_apaga_lo(
     files = {'arquivo_cabecalho': ('pedidos.xlsx', arquivo(cab)),
              'arquivo_itens': ('itens.xlsx', arquivo(itens))}
     h = {'Authorization': f'Bearer {token_admin}'}
-    previa = client.post('/api/v1/cargas/conferir', headers=h, files=files)
+    previa = client.post('/api/v1/cargas/conferir', headers=h, files=files, data={'mes': '2026-10'})
     assert previa.status_code == 200, previa.text
     assert previa.json()['processados'] == 1
     r = client.post('/api/v1/cargas/excel', headers=h, files=files,
-                    data={'vendas_comissao':'true','token_conferencia':previa.json()['token_conferencia']})
+                    data={'vendas_comissao':'true','mes':'2026-10','confirmar_sincronizacao':'true','token_conferencia':previa.json()['token_conferencia']})
     assert r.status_code == 200, r.text
     assert r.json()['desconsiderados_por_tipo'] == 1
     assert db_session.query(Venda).execution_options(incluir_vendas_excluidas=True).count() == 5

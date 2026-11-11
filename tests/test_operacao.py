@@ -139,11 +139,11 @@ def test_fluxo_api_carga_painel_cliente_alertas(client, token_admin):
         "arquivo_cabecalho": ("pedidos.xlsx", xlsx(cabecalhos())),
         "arquivo_itens": ("itens.xlsx", xlsx(itens())),
     }
-    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos)
+    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos, data={"mes": "2026-08"})
     assert previa.status_code == 200, previa.text
     assert client.get("/api/v1/cargas/historico", headers=headers).json() == []
     resposta = client.post("/api/v1/cargas/excel", headers=headers, files=arquivos,
-                          data={"token_conferencia": previa.json()["token_conferencia"], "vendas_comissao": "true"})
+                          data={"token_conferencia": previa.json()["token_conferencia"], "vendas_comissao": "true", "mes": "2026-08", "confirmar_sincronizacao": "true"})
     assert resposta.status_code == 200, resposta.text
     assert resposta.json()["pedidos_sem_itens"] == 1
     painel = client.get("/api/v1/comercial/painel?mes=2026-08", headers=headers)
@@ -162,10 +162,10 @@ def test_fluxo_api_carga_painel_cliente_alertas(client, token_admin):
 def test_conferencia_nao_grava_e_nao_aceita_arquivos_alterados(client, token_admin, db_session):
     headers = {"Authorization": f"Bearer {token_admin}"}
     arquivos = {"arquivo_cabecalho": ("pedidos.xlsx", xlsx(cabecalhos())), "arquivo_itens": ("itens.xlsx", xlsx(itens()))}
-    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos)
+    previa = client.post("/api/v1/cargas/conferir", headers=headers, files=arquivos, data={"mes": "2026-08"})
     assert previa.status_code == 200, previa.text
     assert db_session.query(Venda).count() == db_session.query(Cliente).count() == db_session.query(Fabrica).count() == 0
-    dados = {"token_conferencia": previa.json()["token_conferencia"], "vendas_comissao": "true"}
+    dados = {"token_conferencia": previa.json()["token_conferencia"], "vendas_comissao": "true", "mes": "2026-08", "confirmar_sincronizacao": "true"}
     modificados = {**arquivos, "arquivo_itens": ("itens.xlsx", xlsx(itens().assign(quantidade=20)))}
     assert client.post("/api/v1/cargas/excel", headers=headers, files=modificados, data=dados).status_code == 409
     assert db_session.query(Venda).count() == 0
@@ -393,7 +393,7 @@ def test_api_sincronizacao_confirma_exclusoes_registra_historico_e_auditoria(cli
     dados["confirmar_sincronizacao"] = "true"
     # Não pode reaproveitar a conferência mensal como uma importação parcial.
     alterados = {k: v for k, v in dados.items() if k not in ("modo", "mes")}
-    assert client.post("/api/v1/cargas/excel", headers=headers, files=arquivos, data=alterados).status_code == 409
+    assert client.post("/api/v1/cargas/excel", headers=headers, files=arquivos, data=alterados).status_code == 422
     resultado = client.post("/api/v1/cargas/excel", headers=headers, files=arquivos, data=dados)
     assert resultado.status_code == 200, resultado.text
     assert resultado.json()["excluidos"] == resultado.json()["quantidades_reduzidas"] == 1

@@ -730,3 +730,9 @@
 .preparacao-visita input:not([type="checkbox"]) { width: 100%; min-width: 0; padding: .8rem; border: 1px solid #d9e1d2; border-radius: .6rem; font: inherit; background: white; }
 .preparacao-visita ul { list-style: none; padding: 0; margin: 0; display: grid; gap: .8rem; }
 .preparacao-visita li { padding: .6rem 0; border-bottom: 1px solid #d9e1d2; }
+.sinais-em-destaque { list-style: none; margin: .5rem 0 1rem; padding: 0; }
+.sinais-em-destaque > li { border-top: 1px solid var(--borda); padding: .75rem 0; overflow-wrap: anywhere; }
+.sinais-em-destaque > li > p { margin: .25rem 0; }
+.atalhos-ficha { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0 1rem; }
+.atalhos-ficha a { display: inline-flex; align-items: center; min-height: 44px; padding: .5rem .8rem; border: 1px solid var(--borda); border-radius: 8px; background: white; color: #36644c; text-decoration: none; font-weight: 600; }
+.atalhos-ficha a:hover { background: var(--verde-suave); }

@@ -18,8 +18,10 @@ export default function Importacao({ aoImportar }) {
   const [conferencia, definirConferencia] = useState(null)
   const [confirmado, definirConfirmado] = useState(false)
   const [versao, definirVersao] = useState(0)
-  const [modo, definirModo] = useState('atualizar')
   const [mes, definirMes] = useState('')
+  const hoje = dataLocal()
+  const [ano, mesAtual] = hoje.split('-').map(Number)
+  const ultimoMesEncerrado = mesAtual === 1 ? `${ano - 1}-12` : `${ano}-${String(mesAtual - 1).padStart(2, '0')}`
   const envio = useAcao()
   const enviando = envio.executando
   const historico = useDados('/cargas/historico', versao)
@@ -30,7 +32,7 @@ export default function Importacao({ aoImportar }) {
   async function importar(e) {
     e.preventDefault()
     definirResultado(null)
-    const escopo = { modo, mes }
+    const escopo = { mes }
     const concluiu = await envio.executar(async () => {
       if (!conferencia) {
         definirConferencia(await conferirPlanilhas(cabecalho, itens, escopo))
@@ -45,23 +47,12 @@ export default function Importacao({ aoImportar }) {
   }
 
   return (
-    <Pagina titulo="Importação de dados" descricao="Confira suas planilhas e mantenha o histórico comercial atualizado." className="tela-importacao">
+    <Pagina titulo="Importação de dados" descricao="Sincronize um mês encerrado por vez." className="tela-importacao">
       <Cartao titulo="Importar planilhas">
         <form onSubmit={importar} className="formulario-carga">
-          <label>
-            Modo de importação
-            <select value={modo} disabled={enviando} onChange={(e) => {
-              definirModo(e.target.value); descartarConferencia(); definirResultado(null)
-            }}>
-              <option value="atualizar">Atualizar pedidos informados</option>
-              <option value="sincronizar_mes">Sincronizar mês completo</option>
-            </select>
-          </label>
-          {modo === 'sincronizar_mes' ? <>
-            <label>Mês a sincronizar<input type="month" required value={mes} max={dataLocal().slice(0, 7)} disabled={enviando}
-              onChange={(e) => { definirMes(e.target.value); descartarConferencia(); definirResultado(null) }} /></label>
-            <p>Envie todas as vendas do mês, de todos os vendedores e fábricas. A conferência mostrará os pedidos ausentes que serão excluídos e os itens removidos. Outros meses serão preservados.</p>
-          </> : <p>Atualiza os pedidos enviados. Pedidos ausentes e itens de pedidos que vierem sem detalhamento são conservados. Para refletir exclusões, use Sincronizar mês completo.</p>}
+          <label>Mês a sincronizar<input type="month" required value={mes} max={ultimoMesEncerrado} disabled={enviando}
+            onChange={(e) => { definirMes(e.target.value); descartarConferencia(); definirResultado(null) }} /></label>
+          <p>Use a exportação completa do mês, de todos os vendedores e fábricas. Confira as inclusões, alterações e exclusões antes de confirmar. Outros meses serão preservados.</p>
           <label>
             1. Cabeçalhos dos pedidos
             <input type="file" accept=".xls,.xlsx" required disabled={enviando} onChange={selecionarArquivo(definirCabecalho)} />
@@ -114,13 +105,11 @@ export default function Importacao({ aoImportar }) {
               {conferencia.processados > 100 && <p>A tabela mostra os primeiros 100 pedidos. Os totais incluem todos os pedidos.</p>}
               <div className="confirmacao-carga">
                 <input id={confirmacaoId} type="checkbox" checked={confirmado} disabled={enviando} onChange={(e) => definirConfirmado(e.target.checked)} />
-                <label htmlFor={confirmacaoId}>{modo === 'sincronizar_mes'
-                  ? `Confirmo que as planilhas contêm todas as vendas efetivadas que geram comissão do mês ${mes}, de toda a equipe e de todas as fábricas, e autorizo as exclusões e substituições mostradas na conferência.`
-                  : 'Confirmo que as planilhas contêm somente vendas efetivadas que geram comissão.'}</label>
+                <label htmlFor={confirmacaoId}>{`Confirmo que as planilhas contêm todas as vendas efetivadas que geram comissão de ${mes}, de toda a equipe e de todas as fábricas, e autorizo as mudanças da conferência.`}</label>
               </div>
             </section>
           )}
-          <button className="botao-principal" disabled={enviando || !cabecalho || !itens || (conferencia && !confirmado)}>
+          <button className="botao-principal" disabled={enviando || !mes || !cabecalho || !itens || (conferencia && !confirmado)}>
             {enviando ? 'Processando planilhas…' : conferencia ? 'Confirmar importação' : 'Conferir planilhas'}
           </button>
         </form>

@@ -70,16 +70,16 @@ describe('autenticação', () => {
 describe('importação', () => {
   test('conferência envia as duas planilhas sem gravar', async () => {
     fetch.mockResolvedValue(responder({ token: 'conferencia' }))
-    await conferirPlanilhas(planilha('pedidos.xls'), planilha('itens.xlsx'))
+    await conferirPlanilhas(planilha('pedidos.xls'), planilha('itens.xlsx'), { mes: '2026-08' })
     const [url, opcoes] = fetch.mock.calls[0]
     expect(url).toMatch(/\/cargas\/conferir$/)
-    expect([...opcoes.body.keys()]).toEqual(['arquivo_cabecalho', 'arquivo_itens'])
+    expect([...opcoes.body.keys()]).toEqual(['arquivo_cabecalho', 'arquivo_itens', 'modo', 'mes'])
     expect(opcoes.headers.has('Content-Type')).toBe(false)
   })
 
   test('confirmação envia o token da conferência', async () => {
     fetch.mockResolvedValue(responder({ mensagem: 'Importação concluída.' }))
-    await confirmarImportacao(planilha('pedidos.xls'), planilha('itens.xlsx'), 'conferencia')
+    await confirmarImportacao(planilha('pedidos.xls'), planilha('itens.xlsx'), 'conferencia', { mes: '2026-08' })
     const [url, opcoes] = fetch.mock.calls[0]
     expect(url).toMatch(/\/cargas\/excel$/)
     expect(opcoes.body.get('token_conferencia')).toBe('conferencia')

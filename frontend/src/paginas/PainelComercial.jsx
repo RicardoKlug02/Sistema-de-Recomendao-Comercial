@@ -14,7 +14,8 @@ import { tituloDocumento, tituloSecao } from '../secoes'
 import { ehGestor } from '../servicos/autenticacao'
 
 export default function PainelComercial({ usuario, aoSair }) {
-  const [secao, definirSecao] = useState('painel')
+  const gestor = ehGestor(usuario)
+  const [secao, definirSecao] = useState(gestor ? 'painel' : 'alertas')
   const [clienteId, definirCliente] = useState(null)
   const [memoria] = useState(() => new Map())
   const [retorno, definirRetorno] = useState(null)
@@ -25,7 +26,7 @@ export default function PainelComercial({ usuario, aoSair }) {
   const fabricas = cadastroFabricas.dados || []
   const cadastros = { vendedores, fabricas }
   const atualizar = () => definirVersao((v) => v + 1)
-  const gestor = ehGestor(usuario)
+  const tituloAtual = secao === 'alertas' && !gestor ? 'Hoje' : tituloSecao(secao)
 
   function abrirCliente(id, contexto = {}) {
     definirRetorno({ secao, fabrica: contexto.fabrica ?? '' })
@@ -38,7 +39,7 @@ export default function PainelComercial({ usuario, aoSair }) {
     definirSecao(destino)
   }
 
-  useEffect(() => { document.title = tituloDocumento(tituloSecao(secao)) }, [secao])
+  useEffect(() => { document.title = tituloDocumento(tituloAtual) }, [tituloAtual])
 
   return (
     <MemoriaPaginas.Provider value={memoria}><div className="estrutura-painel">
@@ -47,7 +48,7 @@ export default function PainelComercial({ usuario, aoSair }) {
       </a>
       <MenuLateral usuario={usuario} gestor={gestor} aoSair={aoSair} secaoAtiva={secao} aoNavegar={navegar} />
       <div className="barra-superior">
-        <span>Rio Verde <span>/</span> {tituloSecao(secao)}</span>
+        <span>Rio Verde <span>/</span> {tituloAtual}</span>
         <span>{new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</span>
       </div>
       {(cadastroVendedores.erro || cadastroFabricas.erro) && <aside className="aviso-catalogos" role="alert"><p>Não foi possível carregar os vendedores ou fábricas.</p><button className="botao-secundario" onClick={() => { cadastroVendedores.tentarNovamente(); cadastroFabricas.tentarNovamente() }}>Tentar novamente</button></aside>}
@@ -55,7 +56,7 @@ export default function PainelComercial({ usuario, aoSair }) {
       {secao === 'clientes' && <Clientes key={clienteId || 'lista'} inicial={clienteId} fabricaInicial={retorno?.fabrica} origem={retorno?.secao}
         aoVoltar={retorno ? () => { definirCliente(null); definirSecao(retorno.secao); definirRetorno(null) } : null}
         fabricas={fabricas} />}
-      {secao === 'alertas' && <Alertas {...cadastros} aoAbrirCliente={abrirCliente} />}
+      {secao === 'alertas' && <Alertas {...cadastros} rotina={!gestor} aoAbrirCliente={abrirCliente} />}
       {secao === 'relatorios' && <Relatorios {...cadastros} />}
       {secao === 'analise' && <AnaliseSistema {...cadastros} />}
       {secao === 'regras' && <RegrasNegocio {...cadastros} gestor={gestor} aoAlterar={atualizar} />}

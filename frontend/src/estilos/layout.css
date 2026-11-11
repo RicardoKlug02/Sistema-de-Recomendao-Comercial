@@ -58,6 +58,18 @@
   background: var(--verde-suave);
   font-weight: 600;
 }
+.menu-outras-secoes { position: relative; min-width: 0; }
+.menu-outras-secoes > summary {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 44px;
+  padding-inline: 13px;
+  border-radius: 9px;
+  color: #36644c;
+}
+.menu-outras-secoes > summary::after { content: '▾'; }
+.menu-outras-secoes[open] > summary { background: var(--verde-suave); }
 .rodape-menu {
   padding-top: 18px;
 }
@@ -275,14 +287,25 @@
   }
   .menu-lateral nav {
     display: flex;
-    overflow-x: auto;
-    flex-wrap: nowrap;
+    overflow: visible;
+    flex-wrap: wrap;
     gap: 5px;
   }
   .menu-lateral nav a {
     flex: 0 0 auto;
     padding: 10px 13px;
     min-height: 44px;
+  }
+  .menu-outras-secoes { position: static; }
+  .menu-outras-secoes[open] > div {
+    position: absolute;
+    z-index: 4;
+    inset: 100% 16px auto;
+    padding: .5rem;
+    background: white;
+    border: 1px solid var(--borda);
+    border-radius: 9px;
+    box-shadow: 0 8px 22px #243a3020;
   }
   .barra-superior {
     margin: 0;
@@ -305,4 +328,7 @@
   .cabecalho-painel h1 {
     font-size: 28px;
   }
+  .estrutura-painel:has(.tela-hoje) .barra-superior,
+  .tela-hoje .sobretitulo { display: none; }
+  .tela-hoje .cabecalho-painel { margin-bottom: 16px; }
 }

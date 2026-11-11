@@ -116,14 +116,15 @@ async function preparar(page, perfil = 'admin') {
     return route.fulfill({ json: body })
   })
 }
-async function entrar(page) {
+async function entrar(page, vendedor = false) {
   await page.goto('/')
   await page.getByLabel('E-mail', { exact: true }).fill(usuario.email)
   await page.getByLabel('Senha', { exact: true }).fill('senha-sintetica')
   await page.getByRole('button', { name: 'Entrar', exact: true }).click()
   await expect(
-    page.getByRole('heading', { name: 'Visão geral', exact: true }),
+    page.getByRole('heading', { name: vendedor ? 'Hoje' : 'Visão geral', exact: true }),
   ).toBeVisible()
+  if (vendedor) return
   await expect(
     page.getByRole('list', { name: 'Faturamento por mês' }),
   ).toBeVisible()
@@ -143,6 +144,7 @@ test('gestor registra ajuste comissionado com motivo sem tratar como nova compra
     await route.fulfill({ json: { id: 9, versao: 1, classificacao: salvo.classificacao, considerar_analises: true, nova_compra: false } })
   })
   await entrar(page)
+  await page.locator('nav[aria-label="Menu principal"] summary').click()
   await page.getByRole('link', { name: 'Importação', exact: true }).click()
   const secao = page.getByRole('region', { name: 'Revisão de pedidos importados' })
   await secao.getByRole('button', { name: 'Revisar e ver histórico do pedido 31781' }).click()
@@ -171,6 +173,7 @@ test('ficha permite conferir o pedido e CNPJ que impedem confirmar a recompra', 
   await entrar(page)
   await page.getByRole('link', { name: 'Clientes', exact: true }).click()
   await page.getByRole('button', { name: 'Abrir ficha', exact: true }).click()
+  await page.getByText('Histórico utilizado e origem dos dados', { exact: true }).click()
   await expect(page.getByText(/Rede cadastrada: Orion/)).toBeVisible()
   const secao = page.getByRole('region', { name: 'Produtos com recompra não confirmada' })
   await secao.getByText('Ver pedidos que impedem confirmar a recompra (1)', { exact: true }).click()
@@ -205,7 +208,14 @@ test('painel responsivo, filtros reais e sessão após recarregar', async ({
     path: `test-results/painel-${info.project.name}.png`,
     fullPage: true,
   })
+  let indisponivel = true
+  await page.route('**/api/v1/auth/me', r => indisponivel
+    ? r.fulfill({ status: 503, json: { detail: 'Conexão instável.' } })
+    : r.fallback())
   await page.reload()
+  await expect(page.getByRole('heading', { name: 'Não foi possível verificar o acesso' })).toBeVisible()
+  indisponivel = false
+  await page.getByRole('button', { name: 'Tentar novamente', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Visão geral', exact: true }),
   ).toBeVisible()
@@ -215,7 +225,7 @@ test('cards de clientes, ficha, alertas e permissões de vendedor', async ({
   page,
 }) => {
   await preparar(page, 'vendedor')
-  await entrar(page)
+  await entrar(page, true)
   await expect(
     page.getByRole('link', { name: 'Usuários', exact: true }),
   ).toHaveCount(0)
@@ -229,7 +239,7 @@ test('cards de clientes, ficha, alertas e permissões de vendedor', async ({
   ).toBeVisible()
   await page.getByRole('button', { name: 'Voltar para clientes' }).click()
   await expect(page.getByRole('button', { name: 'Abrir ficha' })).toBeVisible()
-  await page.getByRole('link', { name: 'Alertas', exact: true }).click()
+  await page.getByRole('link', { name: 'Hoje', exact: true }).click()
   await expect(page.getByText('Prioridade alta')).toBeVisible()
   await page.getByRole('button', { name: 'Consultar cliente' }).click()
   await expect(
@@ -277,6 +287,7 @@ test('importação exige conferência e confirmação antes de gravar', async ({
     })
   })
   await entrar(page)
+  await page.locator('nav[aria-label="Menu principal"] summary').click()
   await page.getByRole('link', { name: 'Importação', exact: true }).click()
   const arquivo = {
     name: 'teste.xlsx',
@@ -284,6 +295,7 @@ test('importação exige conferência e confirmação antes de gravar', async ({
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('conteudo sintético interceptado'),
   }
+  await page.getByLabel('Mês a sincronizar').fill('2026-08')
   await page.getByLabel('1. Cabeçalhos dos pedidos').setInputFiles(arquivo)
   await page.getByLabel('2. Itens vendidos').setInputFiles(arquivo)
   await page.getByRole('button', { name: 'Conferir planilhas' }).click()
@@ -340,8 +352,8 @@ test('sincronização mensal confere exclusões e invalida confirmação ao troc
       atualizados: 1, itens: 1, excluidos: 1, itens_removidos: 2, quantidades_reduzidas: 1, avisos: [] } })
   })
   await entrar(page)
+  await page.locator('nav[aria-label="Menu principal"] summary').click()
   await page.getByRole('link', { name: 'Importação', exact: true }).click()
-  await page.getByLabel('Modo de importação').selectOption('sincronizar_mes')
   await page.getByLabel('Mês a sincronizar').fill('2026-08')
   const arquivo = { name: 'mes.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('teste interceptado') }
   await page.getByLabel('1. Cabeçalhos dos pedidos').setInputFiles(arquivo)
@@ -370,6 +382,7 @@ test('sincronização mensal confere exclusões e invalida confirmação ao troc
 test('relatório da rede filtra fábrica e baixa PDF autenticado', async ({ page }) => {
   await preparar(page)
   await entrar(page)
+  await page.locator('nav[aria-label="Menu principal"] summary').click()
   await page.getByRole('link', { name: 'Relatórios', exact: true }).click()
   await page.getByLabel('Rede de clientes', { exact: true }).selectOption('Rede Exemplo')
   const pedido = page.waitForRequest(r => r.url().includes('/relatorios/produtos-rede?') && r.url().includes('fabrica_id=1'))
@@ -408,7 +421,7 @@ test('alertas preservam fábrica e vendedor ao voltar e registram acompanhamento
   await page.getByRole('link', { name: 'Alertas', exact: true }).click()
   await page.getByLabel('Vendedor', { exact: true }).selectOption('1')
   await page.getByLabel('Fábrica', { exact: true }).selectOption('1')
-  await expect(page.getByText('1 × Fábrica inativa', { exact: true })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Sinais em destaque' }).getByText('Fábrica inativa', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Consultar cliente' }).click()
   await expect(page.getByRole('heading', { name: cliente.razao_social, exact: true })).toBeVisible()
   await expect(page.getByLabel('Fábrica', { exact: true })).toHaveValue('1')
@@ -427,7 +440,7 @@ test('alertas preservam fábrica e vendedor ao voltar e registram acompanhamento
   await page.getByLabel('Motivo ou observação').fill('Pedido 123, fábrica Exemplo, confirmado')
   await page.getByRole('button', { name: 'Salvar acompanhamento' }).click()
   await expect(page.getByText('Acompanhamento: Recompra realizada (informada)', { exact: true })).toBeVisible()
-  await expect(page.getByText('1 × Fábrica inativa', { exact: true })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Sinais em destaque' }).getByText('Fábrica inativa', { exact: true })).toBeVisible()
 })
 
 test('PDF da visita respeita produtos escolhidos e filtros da ficha', async ({ page }, testInfo) => {
@@ -628,6 +641,7 @@ test('relatório de códigos limita a lista e mantém o PDF completo após a bus
     rede: 'Rede Exemplo', fabrica: 'Fábrica Exemplo', clientes: 2, total: 45, pedidos_sem_itens: 0, produtos,
   } }))
   await entrar(page)
+  await page.locator('nav[aria-label="Menu principal"] summary').click()
   await page.getByRole('link', { name: 'Relatórios', exact: true }).click()
   await page.getByLabel('Rede de clientes').selectOption('Rede Exemplo')
   const cartao = page.getByRole('region', { name: 'Códigos comprados pela rede', exact: true })
@@ -648,4 +662,32 @@ test('relatório de códigos limita a lista e mantém o PDF completo após a bus
   expect(urlPdf.searchParams.get('rede')).toBe('Rede Exemplo')
   expect(urlPdf.searchParams.has('termo')).toBe(false)
   expect((await download).suggestedFilename()).toBe('produtos-da-rede.pdf')
+})
+
+
+test('Hoje mostra tres sinais, retorno previsto e acesso aos relatorios', async ({ page }, testInfo) => {
+  await preparar(page, 'vendedor')
+  const alertas = Array.from({ length: 4 }, (_, i) => ({
+    id: 'sinal-' + i, tipo: 'PRODUTO_EM_RISCO', descricao: 'Conferir produto ' + (i + 1),
+  }))
+  await page.route('**/api/v1/comercial/alertas?*', r => {
+    expect(new URL(r.request().url()).searchParams.get('rotina')).toBe('true')
+    return r.fulfill({ json: { total: 1, total_alertas: 4, itens: [{
+      id: 'cliente:1', cliente_id: 1, cliente: 'Comercial Exemplo', prioridade: 1, alertas,
+      acompanhamento: { situacao: 'AGUARDANDO_RETORNO', proximo_contato: '2026-08-15', versao: 1 },
+    }] } })
+  })
+  await entrar(page, true)
+  await expect(page.getByRole('list', { name: 'Sinais em destaque' }).getByRole('listitem')).toHaveCount(3)
+  await expect(page.getByText('Retorno vencido', { exact: true })).toBeVisible()
+  await expect(page.getByText('Conferir produto 4', { exact: true })).toBeHidden()
+  await page.screenshot({ path: '../output/usabilidade/hoje-' + testInfo.project.name + '.png' })
+  await page.getByText('Ver mais 1 sinal', { exact: true }).click()
+  await expect(page.getByText('Conferir produto 4', { exact: true })).toBeVisible()
+  const menu = page.getByRole('navigation', { name: 'Menu principal' })
+  await menu.getByText('Mais', { exact: true }).click()
+  await expect(menu.getByRole('link', { name: 'Visão geral', exact: true })).toBeVisible()
+  await expect(menu.getByRole('link', { name: 'Importação', exact: true })).toHaveCount(0)
+  await menu.getByRole('link', { name: 'Relatórios', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Relatórios', exact: true })).toBeVisible()
 })
