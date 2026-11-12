@@ -240,7 +240,7 @@ test('cards de clientes, ficha, alertas e permissões de vendedor', async ({
   await page.getByRole('button', { name: 'Voltar para clientes' }).click()
   await expect(page.getByRole('button', { name: 'Abrir ficha' })).toBeVisible()
   await page.getByRole('link', { name: 'Hoje', exact: true }).click()
-  await expect(page.getByText('Prioridade alta')).toBeVisible()
+  await expect(page.locator('.sinal-principal').getByText('Segundo pedido na base', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Consultar cliente' }).click()
   await expect(
     page.getByRole('heading', { name: cliente.razao_social, exact: true }),
@@ -421,13 +421,14 @@ test('alertas preservam fábrica e vendedor ao voltar e registram acompanhamento
   await page.getByRole('link', { name: 'Alertas', exact: true }).click()
   await page.getByLabel('Vendedor', { exact: true }).selectOption('1')
   await page.getByLabel('Fábrica', { exact: true }).selectOption('1')
-  await expect(page.getByRole('list', { name: 'Sinais em destaque' }).getByText('Fábrica inativa', { exact: true })).toBeVisible()
+  await expect(page.locator('.sinal-principal').getByText('Fábrica inativa', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Consultar cliente' }).click()
   await expect(page.getByRole('heading', { name: cliente.razao_social, exact: true })).toBeVisible()
   await expect(page.getByLabel('Fábrica', { exact: true })).toHaveValue('1')
   await page.getByRole('button', { name: 'Voltar aos alertas' }).click()
   await expect(page.getByLabel('Vendedor', { exact: true })).toHaveValue('1')
   await expect(page.getByLabel('Fábrica', { exact: true })).toHaveValue('1')
+  await page.getByText('Ver mais', { exact: true }).click()
   await page.getByText('Registrar acompanhamento', { exact: true }).click()
   await page.getByLabel('Situação do acompanhamento').selectOption('CONTATADO')
   await page.getByLabel('Motivo ou observação').fill('Contato de demonstração')
@@ -440,7 +441,7 @@ test('alertas preservam fábrica e vendedor ao voltar e registram acompanhamento
   await page.getByLabel('Motivo ou observação').fill('Pedido 123, fábrica Exemplo, confirmado')
   await page.getByRole('button', { name: 'Salvar acompanhamento' }).click()
   await expect(page.getByText('Acompanhamento: Recompra realizada (informada)', { exact: true })).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Sinais em destaque' }).getByText('Fábrica inativa', { exact: true })).toBeVisible()
+  await expect(page.locator('.sinal-principal').getByText('Fábrica inativa', { exact: true })).toBeVisible()
 })
 
 test('PDF da visita respeita produtos escolhidos e filtros da ficha', async ({ page }, testInfo) => {
@@ -665,7 +666,7 @@ test('relatório de códigos limita a lista e mantém o PDF completo após a bus
 })
 
 
-test('Hoje mostra tres sinais, retorno previsto e acesso aos relatorios', async ({ page }, testInfo) => {
+test('Hoje mostra um sinal e expande os demais, retorno previsto e acesso aos relatorios', async ({ page }, testInfo) => {
   await preparar(page, 'vendedor')
   const alertas = Array.from({ length: 4 }, (_, i) => ({
     id: 'sinal-' + i, tipo: 'PRODUTO_EM_RISCO', descricao: 'Conferir produto ' + (i + 1),
@@ -678,11 +679,12 @@ test('Hoje mostra tres sinais, retorno previsto e acesso aos relatorios', async 
     }] } })
   })
   await entrar(page, true)
-  await expect(page.getByRole('list', { name: 'Sinais em destaque' }).getByRole('listitem')).toHaveCount(3)
+  await expect(page.locator('.sinal-principal')).toContainText('Conferir produto 1')
+  await expect(page.getByText('Conferir produto 2', { exact: true })).toBeHidden()
   await expect(page.getByText('Retorno vencido', { exact: true })).toBeVisible()
   await expect(page.getByText('Conferir produto 4', { exact: true })).toBeHidden()
   await page.screenshot({ path: '../output/usabilidade/hoje-' + testInfo.project.name + '.png' })
-  await page.getByText('Ver mais 1 sinal', { exact: true }).click()
+  await page.getByText('Ver mais · 3 outros sinais', { exact: true }).click()
   await expect(page.getByText('Conferir produto 4', { exact: true })).toBeVisible()
   const menu = page.getByRole('navigation', { name: 'Menu principal' })
   await menu.getByText('Mais', { exact: true }).click()

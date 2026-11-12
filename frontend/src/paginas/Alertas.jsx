@@ -42,33 +42,32 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [], rot
       <EstadoConsulta carregando={resposta.carregando} erro={resposta.erro} aoTentar={resposta.tentarNovamente}
         vazio={resposta.dados?.total === 0} mensagem="Nenhum alerta para os filtros selecionados." />
       {sucesso && <p role="status">{sucesso}</p>}
-      <div className="grade-cartoes">
+      <div className="grade-cartoes grade-alertas">
         {resposta.dados?.itens.map((a) => {
           const sinais = a.alertas || [a]
           const dataRetorno = a.acompanhamento?.proximo_contato
           const hoje = dataLocal()
-          const restantes = sinais.slice(3)
+          const [principal, ...restantes] = sinais
           return (
             <article className="cartao cartao-alerta" key={a.id}>
-              <div className="topo-cliente">
-                <span className="icone-indicador"><Icone nome="alertas" /></span>
-                <span className={`etiqueta ${a.prioridade === 1 ? 'etiqueta-alerta' : ''}`}>
-                  {dataRetorno && dataRetorno <= hoje ? (dataRetorno < hoje ? 'Retorno vencido' : 'Retorno hoje') : a.prioridade === 1 ? 'Prioridade alta' : 'Oportunidade'}
-                </span>
+              <div className="cabecalho-alerta-compacto">
+                <h2>{a.cliente}</h2>
+                {dataRetorno && dataRetorno <= hoje && <span className="etiqueta etiqueta-alerta">
+                  {dataRetorno < hoje ? 'Retorno vencido' : 'Retorno hoje'}
+                </span>}
               </div>
-              <h2>{a.cliente}</h2>
               {a.volume_compras_12m != null && <small>Compras em 12 meses{fabrica ? ' nesta fábrica' : ''}: <strong>{formatarMoeda(a.volume_compras_12m)}</strong></small>}
-              {dataRetorno && <p>Retorno combinado para <strong>{formatarData(dataRetorno)}</strong>.</p>}
-              <ul className="sinais-em-destaque" aria-label="Sinais em destaque">
-                {sinais.slice(0, 3).map(sinal => <Sinal key={sinal.id} sinal={sinal} />)}
-              </ul>
-              {restantes.length > 0 && <details className="alertas-agrupados"><summary>Ver mais {restantes.length} {restantes.length === 1 ? 'sinal' : 'sinais'}</summary><ul>
-                {restantes.map(sinal => <Sinal key={sinal.id} sinal={sinal} />)}
-              </ul></details>}
+              {dataRetorno && <small>Retorno: <strong>{formatarData(dataRetorno)}</strong></small>}
+              {principal && <p className="sinal-principal"><strong>{tiposAlerta[principal.tipo] || principal.tipo}</strong> · {principal.descricao}</p>}
               <button className="botao-abrir" onClick={() => aoAbrirCliente(a.cliente_id, { fabrica })}>
                 Consultar cliente <Icone nome="seta" tamanho={17} />
               </button>
-              <AcompanhamentoAlerta key={`${a.id}:${a.acompanhamento?.versao || 0}:${a.assinatura}`} grupo={a} aoSalvar={() => { definirSucesso(`Acompanhamento de ${a.cliente} salvo.`); resposta.tentarNovamente() }} />
+              <details className="alertas-agrupados">
+                <summary>Ver mais{restantes.length > 0 && ` · ${restantes.length} ${restantes.length === 1 ? 'outro sinal' : 'outros sinais'}`}</summary>
+                {principal && <DetalhesSinal sinal={principal} />}
+                {restantes.length > 0 && <ul>{restantes.map(sinal => <Sinal key={sinal.id} sinal={sinal} />)}</ul>}
+                <AcompanhamentoAlerta key={`${a.id}:${a.acompanhamento?.versao || 0}:${a.assinatura}`} grupo={a} aoSalvar={() => { definirSucesso(`Acompanhamento de ${a.cliente} salvo.`); resposta.tentarNovamente() }} />
+              </details>
             </article>
           )
         })}
@@ -86,7 +85,13 @@ export default function Alertas({ vendedores, aoAbrirCliente, fabricas = [], rot
 
 function Sinal({ sinal }) {
   return <li><strong>{tiposAlerta[sinal.tipo] || sinal.tipo}</strong><p>{sinal.descricao}</p>
+    <DetalhesSinal sinal={sinal} />
+  </li>
+}
+
+function DetalhesSinal({ sinal }) {
+  return <>
     {sinal.tipo?.startsWith('FABRICA_') && sinal.volume_fabrica_12m != null && <small>Compras nesta fábrica em 12 meses: {formatarMoeda(sinal.volume_fabrica_12m)}</small>}
     <OrigemInformacao origem={sinal.origem} titulo="Ver pedido de referência" />
-  </li>
+  </>
 }
